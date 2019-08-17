@@ -1,3 +1,3 @@
-import io.e4d.jenkins
+import io.e4d.jenkins.Conveyor
 
 return new Conveyor(this)
