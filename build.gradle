@@ -1,0 +1,130 @@
+plugins {
+  id 'groovy'
+  id 'java'
+  id 'jacoco'
+}
+
+repositories {
+  mavenCentral()
+  jcenter()
+  maven  {
+    url 'https://repo.jenkins-ci.org/public/'
+  }
+}
+
+dependencies {
+  compile(
+    [group: 'com.cloudbees', name: 'groovy-cps', version: '1.+'],
+    [group: 'javax.servlet', name: 'javax.servlet-api', version: '3.+'],
+    [group: 'org.codehaus.groovy', name: 'groovy-all', version: '2.4.12'],
+    [group: 'org.jenkins-ci.main', name: 'jenkins-core', version: '2.+'],
+  )
+
+  compile(group: 'org.jenkins-ci.plugins', name: 'cloudbees-folder', version: '6.9') {
+    artifact {
+      name = 'cloudbees-folder'
+      type = 'jar'
+    }
+  }
+
+  compile(group: 'org.jenkins-ci.plugins.workflow', name: 'workflow-cps', version: '2.74') {
+    artifact {
+      name = 'workflow-cps'
+      type = 'jar'
+    }
+  }
+
+  compile(group: 'org.jenkins-ci.plugins.workflow', name: 'workflow-api', version: '2.37') {
+    artifact {
+      name = 'workflow-api'
+      type = 'jar'
+    }
+  }
+
+  compile(group: 'org.jenkins-ci.plugins.workflow', name: 'workflow-job', version: '2.35') {
+    artifact {
+      name = 'workflow-job'
+      type = 'jar'
+    }
+  }
+
+  testCompile (
+    [group: 'junit', name: 'junit', version: '4.+'],
+    [group: 'org.mockito', name: 'mockito-core', version: '2.+'],
+    [group: 'org.hamcrest', name: 'hamcrest-junit', version: '2.+'],
+    [group: 'org.slf4j', name: 'slf4j-nop', version: '+'],
+  )
+}
+
+sourceSets {
+  main {
+    java {
+      srcDirs = []
+    }
+    groovy {
+      srcDirs = ['src', 'vars'] 
+    }
+  }
+  test {
+    java {
+      srcDirs = []
+    }
+    groovy {
+      srcDir 'test'
+    }
+  }
+}
+
+def shellExecute(String command) {
+  final out = new StringBuilder()
+  final err = new StringBuilder()
+  final proc = command.execute()
+  proc.waitForProcessOutput(out, err)
+  out.toString()
+}
+
+def getGitHeadTags() {
+  shellExecute('git tag --points-at HEAD').split('\n')
+}
+
+def getGitHeadDescription() {
+  shellExecute('git describe HEAD --tags')
+}
+
+def getGitHeadVersion() {
+  gitHeadTags.find { it.startsWith('v') } ?: gitHeadDescription
+}
+
+sourceCompatibility = 1.8
+group 'e4d'
+version gitHeadVersion
+
+jacoco {
+  toolVersion = "0.8.5"
+}
+
+jacocoTestReport {
+  reports {
+    xml.enabled true
+    csv.enabled true
+  }
+}
+
+jacocoTestCoverageVerification {
+  violationRules {
+    rule {
+      limit {
+        counter = 'LINE'
+        value = 'COVEREDRATIO'
+        minimum = 0.2 // 20% | 1.0 -> 100% coverage
+      }
+    }
+  }
+}
+
+task testCoverage(type: Test){
+  scanForTestClasses = true
+  useJUnit()
+}
+testCoverage.finalizedBy(jacocoTestReport)
+testCoverage.finalizedBy(jacocoTestCoverageVerification)

@@ -1,0 +1,8 @@
+﻿/.vs*
+.idea
+.gradle
+/build
+/bin
+.settings
+.project
+.classpath

@@ -1,0 +1,39 @@
+execution:
+  - executor: locust
+    concurrency: ${ CONCURRENCY ?: concurrency }
+    ramp-up: ${ RUMP_UP_PERIOD ?: rumpUpPeriod }
+    iterations: ${ requestsNumber ?: 100000 }
+    hold-for: ${ RUN_TIME ?: runTime }
+    scenario: performance-test
+
+scenarios:
+  performance-test:
+    think-time: 1s
+    default-address: ${ BASE_URI ?: baseUri }
+    script: ${ locustScenario ?: '../locust_scenario.py' }
+
+reporting:
+  - module: passfail
+    criteria: !!seq ${CRITERIA ?: criteria }
+  - module: console
+  - module: final-stats
+    summary: true
+    percentiles: true
+    summary-labels: true
+    failed-labels: true
+    test-duration: true
+    dump-xml: ./test_artifacts/locust-report.xml
+    dump-csv: ./test_artifacts/locust-report.csv
+
+services:
+- module: monitoring
+  ~local:
+  - interval: 10s
+    logging: True
+    metrics:
+    - cpu
+    - disk-space
+    - engine-loop
+    - bytes-sent
+    - bytes-recv
+    - conn-all
