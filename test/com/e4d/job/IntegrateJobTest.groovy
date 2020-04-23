@@ -69,16 +69,16 @@ class IntegrateJobTest {
     assertThat(job.artifactVersion, is(equalTo(sourceVersion)))
   }
 
-  @Test void load_parameters_set_git_config_branch_to_sha1_when_it_is_defined() {
+  @Test void load_parameters_set_git_source_ref_branch_to_sha1_when_it_is_defined() {
     // Arrange
     job.gitConfig.branch = 'branch'
     // Act
     job.loadParameters([sha1: 'sha1'])
     // Assert
-    assertThat(job.gitConfig.branch, is(equalTo('sha1')))
+    assertThat(job.gitSourceRef.branch, is(equalTo('sha1')))
   }
 
-  @Test void load_parameters_leaves_git_config_intact_when_no_sha1_defined() {
+  @Test void load_parameters_leaves_git_source_ref_intact_when_no_sha1_defined() {
     [
       null,
       [:],
@@ -87,12 +87,12 @@ class IntegrateJobTest {
       [sha1: ' '],
     ].each { params ->
       // Arrange
-      job.gitConfig.branch = 'intact'
+      job.gitSourceRef = new GitSourceReference(branch: 'intact')
       // Act
       job.loadParameters(params)
       // Assert
       assertThat("\n     For: ${ params }",
-        job.gitConfig.branch, is(equalTo('intact')))
+        job.gitSourceRef.branch, is(equalTo('intact')))
     }
   }
 
@@ -147,6 +147,11 @@ class IntegrateJobTest {
       new GitConfig(branch: 'config'),
       new GitSourceReference(branch: 'reference'),
       new GitSourceReference(branch: 'reference'),
+
+      'Keeps directory set in reference intact',
+      new GitConfig(),
+      new GitSourceReference(directory: 'directory'),
+      new GitSourceReference(directory: 'directory'),
     ]
     .collate(4)
     .each { test, config, reference, expected ->
@@ -207,5 +212,19 @@ class IntegrateJobTest {
     job.gitSourceRef = new GitSourceReference(directory: 'dir')
     // Act & Assert
     assertThat(job.checkout(), hasEntry('dir', 'root/dir'))
+  }
+
+  @Test void checkout_returns_unmodified_source_dir_when_no_directory_set_in_source_reference() {
+    [
+      new GitSourceReference(),
+      new GitSourceReference(directory: null),
+      new GitSourceReference(directory: ''),
+    ].each { sourceReference ->
+      // Arrange
+      doReturn(dir: 'unmodified').when(job).checkoutSource(argThat(any(Map)))
+      job.gitSourceRef = sourceReference
+      // Act & Assert
+      assertThat(job.checkout(), hasEntry('dir', 'unmodified'))
+    }
   }
 }

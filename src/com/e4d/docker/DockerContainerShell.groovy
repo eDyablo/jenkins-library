@@ -90,7 +90,7 @@ class DockerContainerShell extends ShellImpl {
     network = options.network
     registry = options.registry
     registryCreds = options.registryCreds ?: [:]
-    shellProgram = options.shellProgram ?: 'sh'
+    shellProgram = options.shellProgram ?: 'bash'
   }
 
   /**

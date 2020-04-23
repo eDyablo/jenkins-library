@@ -79,4 +79,11 @@ class DummyPipeline {
 
   def string(Map options) {
   }
+
+  def step(Map options) {
+  }
+  
+  def node(Closure code) {
+    code()
+  }
 }

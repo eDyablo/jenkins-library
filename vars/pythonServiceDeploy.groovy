@@ -77,7 +77,7 @@ def call(
             container('jenkins-slave') {
               sh '''
                 echo "Configuring kubectl"
-                curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.8.6/bin/linux/amd64/kubectl
+                curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubectl
                 chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl && mkdir ~/.kube
                 set +x && echo "$KUBE_CONFIG" > ~/.kube/config && set -x
 
@@ -101,8 +101,6 @@ def call(
                 set -x
 
                 mkdir ./configandsecrets && tar -xf *.tar.gz -C ./configandsecrets  && mv ./configandsecrets/*/* ./configandsecrets
-                  
-                apt-get update && apt-get install jq
 
                 echo "preparation for $AH_NAMESPACE $AUTOMATION_NAMESPACE"
                 

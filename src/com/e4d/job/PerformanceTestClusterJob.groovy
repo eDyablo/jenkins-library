@@ -15,7 +15,7 @@ class PerformanceTestClusterJob extends PipelineJob {
   String repoName                // Repository name for specific microservice
   String branch = 'develop'      // Specific branch name
   String context                 // dev, experimental or prod
-  String namespace = 'locust'    // default namespace
+  String namespace = 'default'    // default namespace
   Integer deploymentTimeout = 60 // Deployment timeout - seconds
   String bztConfigsPath = 'configs'
   String testsDirectory = "load_test"
@@ -63,16 +63,19 @@ class PerformanceTestClusterJob extends PipelineJob {
 
   def run() {
     checkoutGitRepo(repoName, branch)
-    mountTestCode()
+    try {
+      mountTestCode()
 
-    if (framework == 'taurus') {
-      runTaurusDeployment()
-    } else if (framework == 'locust') {
-      runLocustClusterDeployment()
-    } else {
-      return pipeline.error("Framework: $framework - not supported!!!")
+      if (framework == 'taurus') {
+        runTaurusDeployment()
+      } else if (framework == 'locust') {
+        runLocustClusterDeployment()
+      } else {
+        return pipeline.error("Framework: $framework - not supported!!!")
+      }
+    } finally {
+      cleanUpNamespace()
     }
-    cleanUpNamespace()
   }
 
   def checkoutGitRepo(String repoName, String branch){
@@ -95,15 +98,12 @@ class PerformanceTestClusterJob extends PipelineJob {
     pipeline.env.SLAVES_TEMPLATE = slavesTemplate
     pipeline.env.TAURUS_TEMPLATE = taurusTemplate
     pipeline.env.DEPLOY_TIMEOUT = deploymentTimeout
+    pipeline.env.DEPLOY_NAMESPACE = namespace
   }
 
   def prepareClusterData(){
     new MapMerger().merge(cluster, [
       namespace: namespace,
-      grafanaUri: grafanaUri,
-      grafanaServiceName: grafanaServiceName,
-      grafanaServiceNamespace: grafanaServiceNamespace,
-      kibanaUri: kibanaUri,
       expectSlaves: cluster.expectSlaves ?: 2,
       host: host ?: cluster.host,
       locustFile: locustFile ?: cluster.locustFile,
@@ -247,4 +247,5 @@ class PerformanceTestClusterJob extends PipelineJob {
   }
 
 }
+
 

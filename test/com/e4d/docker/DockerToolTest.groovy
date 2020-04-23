@@ -171,4 +171,185 @@ class DockerToolTest {
       argThat(equalTo(['login_password=password']))
     )
   }
+
+  @Test void push_with_only_image_specified_executes_correct_command() {
+    [
+      'image',
+      'imge:tag',
+    ].each { image ->
+      // Arrange
+      reset(shell)
+      // Act
+      docker.push(image)
+      // Assert
+      verify(shell).execute(
+        argThat(
+          hasEntry(
+            equalTo('script'),
+            allOf(
+              stringContainsInOrder(
+                'docker push ',
+                image,
+              ),
+              not(containsString('docker rmi')),
+            )
+          )
+        ),
+        argThat(equalTo([]))
+      )
+    }
+  }
+
+  @Test void push_with_registry_and_image_specified_executes_correct_commands() {
+    [
+      'image',
+      'imge:tag',
+    ].each { image ->
+      // Arrange
+      reset(shell)
+      // Act
+      docker.push(image, registry: 'registry')
+      // Assert
+      verify(shell).execute(
+        argThat(
+          hasEntry(
+            equalTo('script'),
+            stringContainsInOrder(
+              'docker login ', 'registry',
+              'docker tag ', image, " registry/${ image }",
+              'docker push ', " registry/${ image }",
+              'docker rmi ', ' --no-prune=true ', " registry/${ image }",
+            )
+          )
+        ),
+        argThat(equalTo([]))
+      )
+    }
+  }
+
+  @Test void push_with_registry_correctly_uses_specified_username() {
+    // Act
+    docker.push('image', registry: 'registry', username: 'username')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker login ', ' --username=${login_username} ' , ' registry',
+            'docker tag ', ' image ', ' registry/image',
+            'docker push ', ' registry/image',
+          )
+        )
+      ),
+      argThat(equalTo(['login_username=username']))
+    )
+  }
+
+  @Test void push_with_registry_correctly_uses_specified_password() {
+    // Act
+    docker.push('image', registry: 'registry', password: 'password')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker login ', ' --password=${login_password} ' , ' registry',
+            'docker tag ', ' image ', ' registry/image',
+            'docker push ', ' registry/image',
+          )
+        )
+      ),
+      argThat(equalTo(['login_password=password']))
+    )
+  }
+
+  @Test void push_with_image_and_name_specified_executes_correct_commands() {
+    // Act
+    docker.push('image', name: 'name')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker tag ', ' image ', ' name',
+            'docker push ', ' name',
+            'docker rmi ', ' --no-prune=true ', ' name',
+          )
+        )
+      ),
+      argThat(equalTo([]))
+    )
+  }
+
+  @Test void build_with_path_and_registry_executes_correct_commands() {
+    // Act
+    docker.build(path: 'path', registry: 'registry')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker login ', 'registry',
+            'docker build ', ' path',
+          )
+        )
+      ),
+      argThat(equalTo([]))
+    )
+  }
+
+  @Test void build_with_registry_correctly_uses_specified_username() {
+    // Act
+    docker.build(path: 'path', registry: 'registry', username: 'username')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker login ', ' --username=${login_username} ' , ' registry',
+            'docker build ', ' path',
+          )
+        )
+      ),
+      argThat(equalTo(['login_username=username']))
+    )
+  }
+
+  @Test void build_with_registry_correctly_uses_specified_password() {
+    // Act
+    docker.build(path: 'path', registry: 'registry', password: 'password')
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          stringContainsInOrder(
+            'docker login ', ' --password=${login_password} ' , ' registry',
+            'docker build ', ' path',
+          )
+        )
+      ),
+      argThat(equalTo(['login_password=password']))
+    )
+  }
+
+  @Test void push_with_name_specified_does_not_execute_rmi_command_when_asked_to_keep_image() {
+    // Act
+    docker.push('image', name: 'name', keepImage: true)
+    // Assert
+    verify(shell).execute(
+      argThat(
+        hasEntry(
+          equalTo('script'),
+          not(containsString('docker rmi '))
+        )
+      ),
+      argThat(equalTo([]))
+    )
+  }
 }

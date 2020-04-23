@@ -54,12 +54,38 @@ class DotnetToolTest extends DotnetTool {
     ))
   }
 
+  @Test void nuget_push_does_not_use_source_when_it_is_not_specified() {
+    [
+      [:],
+      [source: null],
+      [source: ''],
+    ].each {options ->
+      reset(shell)
+      nugetPush(options, 'package')
+      verify(shell).execute(shellArgs.capture(), any(List))
+      assertThat(shellScript, not(containsString('--source')))
+    }
+  }
+
   @Test void nuget_push_uses_specified_api_key() {
     nugetPush('package', api_key: 'key')
     verify(shell).execute(shellArgs.capture(), any(List))
     assertThat(shellScript, stringContainsInOrder(
       'nuget push', '--api-key', 'key'
     ))
+  }
+
+  @Test void nuget_push_does_not_use_api_key_when_it_is_not_specified() {
+    [
+      [:],
+      [api_key: null],
+      [api_key: ''],
+    ].each {options ->
+      reset(shell)
+      nugetPush(options, 'package')
+      verify(shell).execute(shellArgs.capture(), any(List))
+      assertThat(shellScript, not(containsString('--api-key')))
+    }
   }
 
   @Test void nuget_push_does_not_search_for_nupkg_when_specified_package_path() {
@@ -181,13 +207,15 @@ class DotnetToolTest extends DotnetTool {
       argThat(
         hasEntry(
           equalTo('script'),
-          containsString('''
-            echo "{
-              \\"selector\\": \\"project.csproj\\",
-              \\"project\\": \\"${project}\\",
-              \\"package\\": \\"${package}\\"
-            }"
-          '''.stripIndent().trim())
+          stringContainsInOrder(
+            'echo "{',
+            '\\"selector\\": \\"project.csproj\\"',
+            '\\"project\\": \\"${project}\\"',
+            '\\"nugets\\": [',
+            '\\"${nugets}\\"',
+            ']',
+            '}"',
+          )
         )
       ),
       argThat(
@@ -201,7 +229,7 @@ class DotnetToolTest extends DotnetTool {
     output
     {
       "project": "project",
-      "package": "package"
+      "nugets": ["nuget"]
     }
     output
     '''.stripIndent().trim()
@@ -211,7 +239,7 @@ class DotnetToolTest extends DotnetTool {
     )
     assertThat(csprojPack('project'), allOf(
       hasEntry('project', 'project'),
-      hasEntry('package', 'package'),
+      hasEntry('nugets', ['nuget']),
     ))
   }
 
@@ -234,10 +262,10 @@ class DotnetToolTest extends DotnetTool {
       '',
     ]
     .collate(3)
-    .each { project, pkg, version ->
+    .each { project, nuget, version ->
       doReturn("""{
         "project": "${ project }",
-        "package": "${ pkg }"
+        "nugets": ["${ nuget }"]
       }""").when(shell).execute(
         argThat(hasEntry('returnStdout', true)),
         argThat(equalTo([]))
@@ -246,6 +274,48 @@ class DotnetToolTest extends DotnetTool {
         'version', version
       ))
       reset(shell)
+    }
+  }
+
+  @Test void nuget_push_uses_specified_symbol_source() {
+    nugetPush('package', symbolSource: 'symbol source')
+    verify(shell).execute(shellArgs.capture(), any(List))
+    assertThat(shellScript, stringContainsInOrder(
+      'nuget push', '--symbol-source', 'symbol source'
+    ))
+  }
+
+  @Test void nuget_push_does_not_use_symbol_source_when_it_is_not_specified() {
+    [
+      [:],
+      [symbolSource: null],
+      [symbolSource: ''],
+    ].each {options ->
+      reset(shell)
+      nugetPush(options, 'package')
+      verify(shell).execute(shellArgs.capture(), any(List))
+      assertThat(shellScript, not(containsString('--symbol-source')))
+    }
+  }
+
+  @Test void nuget_push_uses_specified_symbol_api_key() {
+    nugetPush('package', symbolApiKey: 'symbol key')
+    verify(shell).execute(shellArgs.capture(), any(List))
+    assertThat(shellScript, stringContainsInOrder(
+      'nuget push', '--symbol-api-key', 'symbol key'
+    ))
+  }
+
+  @Test void nuget_push_does_not_use_symbol_api_key_when_it_is_not_specified() {
+    [
+      [:],
+      [symbolApiKey: null],
+      [symbolApiKey: ''],
+    ].each {options ->
+      reset(shell)
+      nugetPush(options, 'package')
+      verify(shell).execute(shellArgs.capture(), any(List))
+      assertThat(shellScript, not(containsString('--symbol-api-key')))
     }
   }
 }

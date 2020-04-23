@@ -9,7 +9,7 @@ import static org.mockito.Mockito.*
 
 class FindWorkflowJobJobTest {
   final workflow = spy(DummyPipeline)
-  final job = spy(new FindWorkflowJobJob(workflow: workflow))
+  final job = spy(new FindWorkflowJobJob(workflow))
   final parameters = [:]
 
   @Before void beforeEachTest() {

@@ -1,5 +1,8 @@
 package com.e4d.job
 
+import com.e4d.aws.ec2.AwsEc2MetadataReader
+import com.e4d.build.SemanticVersion
+import com.e4d.build.SemanticVersionBuilder
 import com.e4d.docker.DockerContainerShell
 import com.e4d.docker.DockerTool
 import com.e4d.dotnet.DotnetTool
@@ -17,6 +20,7 @@ import com.e4d.step.CheckoutRecentSourceStep
 import java.net.URI
 
 class IntegrateNugetPackageJob extends PipelineJob {
+  boolean publishPrereleaseVersion = true
   def packet
   def source
   DockerTool docker
@@ -27,10 +31,10 @@ class IntegrateNugetPackageJob extends PipelineJob {
   NugetConfig nugetConfig = new NugetConfig()
   String dockerfile
   String image
+  String releaseVersionPattern = /^\d+(\.\d+){2}$/
+  String testProjectFilePattern = /.+\.[Tt]ests?\.csproj/
+  String testResultDir = [this.class.simpleName, hashCode()].join('-')
   URI dockerRegistry
-
-  final projectFilePattern = /.+\.csproj/
-  final testProjectFilePattern = /.+\.[Tt]ests?\.csproj/
 
   IntegrateNugetPackageJob(pipeline) {
     super(pipeline)
@@ -43,7 +47,9 @@ class IntegrateNugetPackageJob extends PipelineJob {
   }
 
   def loadParameters(params) {
-    gitConfig.branch = params?.sha1?.trim() ?: gitConfig.branch
+    if (params?.sha1?.trim()) {
+      gitSourceRef = gitSourceRef.withBranch(params.sha1.trim())
+    }
   }
 
   def defineEnvVars() {
@@ -77,7 +83,7 @@ class IntegrateNugetPackageJob extends PipelineJob {
   }
 
   void run() {
-    stage('checkout') {
+    stage('checkout', gitSourceRef.isValid) {
       source = checkout()
     }
     stage('study', source) {
@@ -108,20 +114,37 @@ class IntegrateNugetPackageJob extends PipelineJob {
       credsId: gitConfig.credsId,
       pipeline: pipeline,
     )
-    return [
-      dir: [source.dir, gitSourceRef.directory].findAll().join('/')
-    ].findAll { key, value -> value }
+    source.dir = [source.dir, gitSourceRef.directory].findAll().join('/')
+    source.findAll { key, value -> value }
   }
 
   def study() {
     final findings = [
-      projects: fileFinder.find(directory: source.dir, name: '*.csproj')
+      projects: fileFinder.find(directory: source.dir, name: '*.csproj'),
+      version: determineSourceVersion(source)
     ]
     final dockerfile = [source.dir, 'Dockerfile'].join('/')
     if (pipeline.fileExists(dockerfile)) {
       findings.dockerfile = dockerfile
     }
     findings.findAll { key, value -> value != null }
+  }
+
+  private SemanticVersion determineSourceVersion(source) {
+    final version = new SemanticVersionBuilder().fromGitTag(source.tag).build()
+    if (version.build) {
+      final builder = new SemanticVersionBuilder()
+        .major(version.major)
+        .minor(version.minor)
+        .patch(version.patch)
+        .prerelease(version.prereleaseIds)
+      if (source.timestamp) {
+        builder.prerelease('sut', source.timestamp)
+      }
+      builder.prerelease(version.buildIds)
+      version = builder.build()
+    }
+    return version
   }
 
   def equip() {
@@ -153,32 +176,71 @@ class IntegrateNugetPackageJob extends PipelineJob {
   }
 
   void test() {
-    runInsideImage { shell ->
-      shell.execute("""
-        set -o errexit
-        projects="\$(find . -regex '${ testProjectFilePattern }')"
-        for project in "\${projects}"
-        do
-          dotnet test "\${project}"
-        done
-      """.stripIndent().trim())
+    final awsCreds = readAwsSecurityCredentials()
+    final envs = [
+      AWS_ACCESS_KEY_ID: awsCreds.AccessKeyId,
+      AWS_SECRET_ACCESS_KEY: awsCreds.SecretAccessKey,
+      AWS_SESSION_TOKEN: awsCreds.Token,
+    ].collect { k, v -> [k, v].join('=') }
+    try {
+      runInsideImage { shell ->
+        try {
+          shell.execute(envs,
+            script: """
+              set -o errexit
+              mkdir -p '${ testResultDir }'
+              projects="\$(find . -regextype egrep -regex '${ testProjectFilePattern }')"
+              if [ -n "\${projects}" ]
+              then
+                for project in \${projects}
+                do
+                  dotnet test "\${project}" --logger trx --results-directory '${ testResultDir }'
+                done
+              fi
+            """.stripIndent().trim())
+        } finally {
+          shell.downloadFile(testResultDir, '.')
+        }
+      }
+    } finally {
+      publishTestResults(testResultDir)
     }
+  }
+
+  Map readAwsSecurityCredentials() {
+    AwsEc2MetadataReader.newInstance(PipelineShell.newInstance(pipeline))
+      .readSecurityCredentials()
+  }
+
+  void publishTestResults(String directory) {
+    pipeline.step([
+      $class: 'MSTestPublisher',
+      testResultsFile: [directory, '*.trx'].join('/'),
+      failOnError: false,
+      keepLongStdio: true
+    ])
   }
 
   def pack() {
-    packCsProjects(source.projects.collect {
+    def packages = packCsProjects(source.projects.collect {
       it.split('/').last()
-    }).findAll {
-      it.package
+    }).findAll { pkg ->
+      pkg.nugets
     }
+    if (publishPrereleaseVersion == false) {
+      packages = packages.findAll { pkg ->
+        pkg.version =~ releaseVersionPattern
+      }
+    }
+    return packages
   }
 
   void deliver() {
-    deliverPackages(packet.collect {
+    deliverPackages(packet.collect { pkg ->
       [
-        name: it.project.split('/').last() - '.csproj',
-        package: it.package,
-        version: it.version,
+        name: pkg.project.split('/').last() - '.csproj',
+        nugets: pkg.nugets,
+        version: pkg.version,
       ]
     })
   }
@@ -190,31 +252,31 @@ class IntegrateNugetPackageJob extends PipelineJob {
   def packCsProjects(List<String> projects) {
     runInsideImage { shell ->
       final dotnet = DotnetTool.newInstance(pipeline, shell)
-      projects.collect {
-        dotnet.csprojPack(it)
-      }.findAll {
-        it.package
-      }.collect {
-        it + [
-          package: shell.downloadFile(it.package, '.')
+      projects.collect { project ->
+        dotnet.csprojPack(project, version: source.version)
+      }.findAll { pkg ->
+        pkg.nugets
+      }.collect { pkg ->
+        pkg + [
+          nugets: pkg.nugets.findAll().collect { nuget ->
+            shell.downloadFile(nuget, '.')
+          }
         ]
       }
     }
   }
 
   void deliverPackages(List packages) {
-    pushPackages(triagePackages(packages).findAll {
-      it.exists == false }
-    )
+    pushPackages(triagePackages(packages).findAll { !it.exists })
   }
 
   def triagePackages(List packages) {
     final repository = createNugetRepository()
-    packages.collect {
-      it + [
+    packages.collect { pkg ->
+      pkg + [
         exists: repository.hasNuget(
-          name: it.name,
-          version: it.version,
+          name: pkg.name,
+          version: pkg.version,
         )
       ]
     }
@@ -236,18 +298,31 @@ class IntegrateNugetPackageJob extends PipelineJob {
       'https:/', nexusConfig.authorityName,
       'repository', 'debug-nugets',
     ].join('/')
+    final nugetSymbolServer = [
+      'https:/', nexusConfig.authorityName,
+      'repository', 'debug-nuget-symbol',
+    ].join('/')
     final nugetServerApiKey = nexusConfig.apiKey.toString()
+    final nugetSymbolServerApiKey = nugetServerApiKey
     runInsideImage { shell ->
       final dotnet = DotnetTool.newInstance(pipeline, shell)
-      packages.collect {
-        it + [
-          package: shell.uploadFile(it.package, '/tmp')
+      packages.collect { pkg ->
+        pkg + [
+          nugets: pkg.nugets.collect { nuget ->
+            shell.uploadFile(nuget, '/tmp')
+          }
         ]
-      }.each {
-        dotnet.nugetPush(it.package,
-          source: nugetServer,
-          api_key: nugetServerApiKey,
-        )
+      }.each { pkg ->
+        pkg.nugets.findAll { nuget ->
+          nuget.endsWith('.nupkg') && !nuget.endsWith('.symbols.nupkg')
+        }.each { nuget ->
+          dotnet.nugetPush(nuget,
+            source: nugetServer,
+            api_key: nugetServerApiKey,
+            symbolSource: nugetSymbolServer,
+            symbolApiKey: nugetSymbolServerApiKey,
+          )
+        }
       }
     }
   }
@@ -273,10 +348,34 @@ class IntegrateNugetPackageJob extends PipelineJob {
       this.job = job
     }
 
-    void source(Closure code) {
-      code.delegate = new SourceDeclaration(job)
+    void translate(Class declaration, Closure code) {
+      code.delegate = declaration.newInstance(job)
       code.resolveStrategy = Closure.DELEGATE_ONLY
       code.call()
+    }
+
+    void source(Closure code) {
+      translate(SourceDeclaration, code)
+    }
+
+    void publish(Closure code) {
+      translate(PublishDeclaration, code)
+    }
+
+    void publishStrategy(Closure code) {
+      translate(PublishStrategyDeclaration, code)
+    }
+
+    def getPublishStrategy() {
+      PublishStrategyDeclaration.newInstance(job)
+    }
+
+    void testing(Closure code) {
+      translate(TestingDeclaration, code)
+    }
+
+    def getTesting() {
+      TestingDeclaration.newInstance(job)
     }
   }
 
@@ -299,6 +398,52 @@ class IntegrateNugetPackageJob extends PipelineJob {
       code.delegate = [:]
       code.call()
       job.gitSourceRef = new GitSourceReference(code.delegate)
+    }
+  }
+
+  static class PublishDeclaration {
+    final IntegrateNugetPackageJob job
+
+    PublishDeclaration(IntegrateNugetPackageJob job) {
+      this.job = job
+    }
+
+    def getStrategy() {
+      PublishStrategyDeclaration.newInstance(job)
+    }
+
+    void strategy(Closure code) {
+      code.delegate = PublishStrategyDeclaration.newInstance(job)
+      code.resolveStrategy = Closure.DELEGATE_ONLY
+      code.call()
+    }
+  }
+
+  static class PublishStrategyDeclaration {
+    final IntegrateNugetPackageJob job
+
+    PublishStrategyDeclaration(IntegrateNugetPackageJob job) {
+      this.job = job
+    }
+
+    def getSkipPrereleaseVersion() {
+      job.publishPrereleaseVersion = false
+    }
+  }
+
+  static class TestingDeclaration {
+    final IntegrateNugetPackageJob job
+
+    TestingDeclaration(IntegrateNugetPackageJob job) {
+      this.job = job
+    }
+
+    void projectFilePattern(String pattern) {
+      setProjectFilePattern(pattern)
+    }
+
+    void setProjectFilePattern(String pattern) {
+      job.testProjectFilePattern = pattern
     }
   }
 }

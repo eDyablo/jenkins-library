@@ -1,69 +1,72 @@
 package com.e4d.job
 
-import com.cloudbees.hudson.plugins.folder.Folder
-import hudson.model.Items
-import hudson.model.ParametersDefinitionProperty
-import hudson.model.StringParameterDefinition
-import hudson.tasks.LogRotator
-import jenkins.model.BuildDiscarderProperty
-import jenkins.model.Jenkins
-import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
-import org.jenkinsci.plugins.workflow.job.WorkflowJob
-
-class BootstrapJob implements Job {
-  final def workflow
-
+class BootstrapJob extends SetupJob {
   BootstrapJob(workflow) {
-    this.workflow = workflow
-  }
-
-  Jenkins getJenkins() {
-    Jenkins.get()
-  }
-
-  String getFullName() {
-    workflow.env.JOB_NAME
-  }
-
-  def getParameterDefinitions() {
-  }
-
-  void loadParameters() {
-  }
-
-  void initialize() {
+    super(workflow)
   }
 
   void run() {
     workflow.stage('bootstrap') {
-      setupLobby()
-    }
-  }
-
-  void setupLobby() {
-    final lobby = jenkins.allItems(Folder).find {
-      it.fullName == 'lobby'
-    } as Folder ?: jenkins.createProject(Folder, 'lobby') as Folder
-
-    final jobItem = lobby.allItems(WorkflowJob).find {
-      it.name == 'setup-service'
-    } as WorkflowJob ?: lobby.createProject(WorkflowJob, 'setup-service') as WorkflowJob
-
-    final job = new SetupServiceJob(workflow)
-
-    jobItem.removeProperty(ParametersDefinitionProperty)
-
-    jobItem.addProperty(new ParametersDefinitionProperty(
-      job.parameterDefinitions))
-
-    jobItem.addProperty(new BuildDiscarderProperty(
-      new LogRotator('', '1', '', '')))
-
-    jobItem.definition = new CpsFlowDefinition('''\
-      e4d.setupService {
+      jenkins {
+        folder('lobby') {
+          job('draft-git-repository-release') {
+            displayName 'draft git repository release'
+            final job = new DraftGitRepositoryReleaseJob(workflow)
+            discardBuilds afterAmount: 20
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+          job('setup-docker-image') {
+            displayName 'setup docker image'
+            final job = new SetupDockerImageJob(workflow)
+            discardBuilds afterAmount: 5
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+          job('setup-helm-chart') {
+            displayName 'setup helm chart'
+            final job = new SetupHelmChartJob(workflow)
+            discardBuilds afterAmount: 5
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+          job('setup-nuget') {
+            displayName 'setup nuget'
+            final job = new SetupNugetJob(workflow)
+            discardBuilds afterAmount: 5
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+          job('setup-service') {
+            displayName 'setup service'
+            final job = new SetupServiceJob(workflow)
+            discardBuilds afterAmount: 5
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+        }
+        folder('maintenance') {
+          job('find-workflow-job') {
+            displayName 'find workflow job'
+            final job = new FindWorkflowJobJob(workflow)
+            discardBuilds afterAmount: 10
+            parameters job.parameterDefinitions
+            script job.workflowScript
+          }
+          job('find-and-replace-script') {
+            displayName 'find and replace script'
+            final job = new FindAndReplaceScriptJob(workflow)
+            discardBuilds afterAmount: 10
+            parameters job.parameterDefinitions
+            script job.workflowScript
+            description '''
+              <h1><font color='red'>Use it with causion!<font color='red'></h1>
+              <h2>It might break or delete job scripts</h2>
+              <p>There are a <b>'dry run'</b> option which is set by default.</p>
+            '''
+          }
+        }
       }
-    '''.stripIndent(), true)
-
-    jobItem.save()
+    }
   }
 }

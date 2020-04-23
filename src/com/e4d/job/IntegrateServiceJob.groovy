@@ -251,10 +251,11 @@ class IntegrateServiceJob extends PipelineJob {
       final role = awsSts.assumeRole(
         "arn:aws:iam::429750608758:role/${ values.service?.iamrole }", 'ci',
         duration_seconds: 1800, region: region)
-      return [ "AWS_ACCESS_KEY_ID=\"${ role.Credentials.AccessKeyId }\"",
+      return [ 
+        "AWS_ACCESS_KEY_ID=\"${ role.Credentials.AccessKeyId }\"",
         "AWS_SECRET_ACCESS_KEY=\"${ role.Credentials.SecretAccessKey }\"",
         "AWS_SESSION_TOKEN=\"${ role.Credentials.SessionToken }\"",
-        "AWS_DEFAULT_REGION=${ region }"
+        "AWS_DEFAULT_REGION=${ region }",
       ]
     }
     else {

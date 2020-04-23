@@ -1,5 +1,6 @@
 package com.e4d.job
 
+import com.e4d.build.SemanticVersion
 import com.e4d.docker.DockerTool
 import com.e4d.git.GitSourceReference
 import com.e4d.pipeline.DummyPipeline
@@ -135,7 +136,7 @@ class IntegrateDockerImageJobTest {
     ].each { dockerfile ->
       beforeEachTest()
       // Arrange
-      job.source = [ dockerfile: dockerfile]
+      job.source = [dockerfile: dockerfile]
       // Act
       job.run()
       // Assert
@@ -170,7 +171,7 @@ class IntegrateDockerImageJobTest {
     )
   }
 
-  @Test void build_logs_into_specified_docker_registry() {
+  @Test void build_uses_specified_docker_registry_and_creds() {
     // Arrange
     job.docker = mock(DockerTool)
     job.source = [:]
@@ -179,9 +180,9 @@ class IntegrateDockerImageJobTest {
     // Act
     job.build()
     // Assert
-    verify(job.docker).login(
+    verify(job.docker).build(
       argThat(allOf(
-        hasEntry('server', 'registry'),
+        hasEntry('registry', job.dockerRegistry),
         hasEntry('username', 'user'),
         hasEntry('password', 'password'),
       ))
@@ -213,5 +214,119 @@ class IntegrateDockerImageJobTest {
     job.initializeJob()
     // Assert
     assertThat(job.dockerRegistry, hasToString('intact'))
+  }
+
+  @Test void run_does_delivery_in_deliver_stage_when_image_id_is_defined() {
+    // Arrange
+    job.source = [dockerfile: 'dockerfile']
+    doReturn('image id').when(job).build()
+    // Act
+    job.run()
+    // Assert
+    verify(pipeline).stage(argThat(equalTo('deliver')), argThat(any(Closure)))
+    verify(job).deliver()
+  }
+
+  @Test void run_does_not_deliver_and_marks_deliver_stage_skipped_when_no_image_id() {
+    [
+      null, '',
+    ].each { imageId ->
+      beforeEachTest()
+      // Arrange
+      job.source = [dockerfile: 'dockerfile']
+      doReturn(imageId).when(job).build()
+      // Act
+      job.run()
+      // Assert
+      verify(job, never()).deliver()
+      verify(job).markStageSkipped('deliver')
+    }
+  }
+
+  @Test void can_deliver_when_image_id_is_defined() {
+    job.imageId = 'image id'
+    assertThat(job.canDeliver, is(true))
+  }
+
+  @Test void can_not_deliver_when_image_id_is_not_defined() {
+    [
+      null,
+      '',
+    ].each { imageId ->
+      job.imageId = imageId
+      assertThat(job.canDeliver, is(false))
+    }
+  }
+
+  @Test void can_not_deliver_when_dissalow_to_publish_prerelease_version_and_artifact_version_is_prerelease() {
+    [
+      new SemanticVersion(prerelease: 'a'),
+      new SemanticVersion(major: 1, prerelease: 'a'),
+      new SemanticVersion(major: 1, minor: 2, prerelease: 'a'),
+      new SemanticVersion(major: 1, patch: 3, prerelease: 'a'),
+    ].each { version ->
+      job.imageId = 'image id'
+      job.publishPrereleaseVersion = false
+      doReturn(version).when(job).artifactVersion
+      assertThat(job.canDeliver, is(false))
+    }
+  }
+
+  @Test void can_deliver_when_dissalow_to_publish_prerelease_version_and_artifact_version_is_not_prerelease() {
+    [
+      new SemanticVersion(),
+      new SemanticVersion(major: 1),
+      new SemanticVersion(major: 1, minor: 2),
+      new SemanticVersion(major: 1, patch: 2),
+      new SemanticVersion(major: 1, minor: 2, patch: 3, build: 'b'),
+    ].each { version ->
+      job.imageId = 'image id'
+      job.publishPrereleaseVersion = false
+      doReturn(version).when(job).artifactVersion
+      assertThat(job.canDeliver, is(true))
+    }
+  }
+
+  @Test void delivers_image_with_name_started_with_artifact_base_name_when_it_is_defined() {
+    // Arrange
+    job.artifactBaseName = 'artifact base name'
+    job.imageId = 'image id'
+    job.docker = mock(DockerTool)
+    // Act
+    job.deliver()
+    // Assert
+    verify(job.docker).push(
+      argThat(
+        hasEntry(
+          equalTo('name'),
+          startsWith('artifact base name:'),
+        )
+      ),
+      argThat(equalTo('image id'))
+    )
+  }
+
+  @Test void delivers_image_with_name_started_with_repository_when_artifact_base_name_when_is_not_defined() {
+    [
+      null, ''
+    ].each { artifactBaseName ->
+      // Arrange
+      job.artifactBaseName = artifactBaseName
+      job.gitSourceRef = new GitSourceReference('repository')
+      job.imageId = 'image id'
+      job.docker = mock(DockerTool)
+      // Act
+      job.deliver()
+      // Assert
+      verify(job.docker).push(
+        argThat(
+          hasEntry(
+            equalTo('name'),
+            startsWith('repository:'),
+          )
+        ),
+        argThat(equalTo('image id'))
+      )
+    }
   }
 }

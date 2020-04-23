@@ -2,7 +2,7 @@ package com.e4d.build
 
 public void defaultTemplate(Map options, Closure body) {
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: options?.podLabel ?: 'default',
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")
@@ -37,7 +37,7 @@ public void defaultTemplate(Map options, Closure body) {
 
 public void clientgenTemplate(Map options, Closure body) {
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: options?.podLabel ?: 'clientgen',
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")
@@ -70,7 +70,7 @@ public void clientgenTemplate(Map options, Closure body) {
 
 public void dockerTemplate(Map options, Closure body) {
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: options?.podLabel ?: 'docker',
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")
@@ -103,7 +103,7 @@ public void dockerTemplate(Map options, Closure body) {
 
 public void locustTemplate(Map options, Closure body) {
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: options?.podLabel ?: 'locust',
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")
@@ -137,7 +137,7 @@ public void locustTemplate(Map options, Closure body) {
 
 public void systemtestTemplate(Map options, Closure body) {
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: options?.podLabel ?: 'systemtest',
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")

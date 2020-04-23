@@ -24,8 +24,8 @@ class SystemTestJob extends PipelineJob {
   String baseUrl
   String testFilter = "TestCategory=System"
   String verbosity = "normal"        // [ quiet, minimal, normal, detailed ]
-  String testDir = "scr/SystemTests/SystemTests"
-  String defaultProject = "SystemTests.csproj"
+  String testDir = "scr/SystemTests/e4d.Test.SystemTests"
+  String defaultProject = "e4d.Test.SystemTests.csproj"
   String jiraLinkPattern = "https://e4d.atlassian.net/browse/{}"
   String settingsFile = "test.runsettings"
   boolean disableParallelization = false

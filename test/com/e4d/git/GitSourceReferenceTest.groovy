@@ -275,6 +275,7 @@ class GitSourceReferenceTest {
       new GitSourceReference(owner: 'owner', repository: 'repository', branch: 'branch'),
       new GitSourceReference(owner: 'owner', repository: 'repository', directory: 'directory'),
       new GitSourceReference(repository: 'repository', directory: 'directory'),
+      new GitSourceReference(host: 'host', owner: 'owner', repository: 'repository', directory: 'directory'),
     ].each { reference ->
       assertThat("\n     For: '${ reference }'",
         reference.isValid, is(equalTo(true)))
@@ -382,5 +383,24 @@ class GitSourceReferenceTest {
       assertThat("\n     For: '${ first }' == '${ second }'",
         first == second, is(expected))
     }
+  }
+
+  @Test void with_branch_returns_new_reference_copied_from_origin_and_with_new_branch() {
+    final origin = new GitSourceReference(
+      branch: 'origin branch',
+      directory: 'origin directory',
+      host: 'origin host',
+      owner: 'origin owner',
+      repository: 'origin repository',
+      scheme: 'origin scheme',
+    )
+    assertThat(origin.withBranch('new branch'), allOf(
+      hasProperty('branch', equalTo('new branch')),
+      hasProperty('directory', equalTo('origin directory')),
+      hasProperty('host', equalTo('origin host')),
+      hasProperty('owner', equalTo('origin owner')),
+      hasProperty('repository', equalTo('origin repository')),
+      hasProperty('scheme', equalTo('origin scheme')),
+    ))
   }
 }

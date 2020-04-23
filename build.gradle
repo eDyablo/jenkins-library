@@ -48,6 +48,27 @@ dependencies {
     }
   }
 
+  compile(group: 'com.coravy.hudson.plugins.github', name: 'github', version: '1.29.5') {
+    artifact {
+      name = 'github'
+      type = 'jar'
+    }
+  }
+
+  compile(group: 'org.jenkinsci.plugins', name: 'pipeline-model-definition', version: '1.3.9') {
+    artifact {
+      name = 'pipeline-model-definition'
+      type = 'jar'
+    }
+  }
+
+  compile(group: 'org.jenkins-ci.plugins', name: 'ghprb', version: '1.42.0') {
+    artifact {
+      name = 'ghprb'
+      type = 'jar'
+    }
+  }
+
   testCompile (
     [group: 'junit', name: 'junit', version: '4.+'],
     [group: 'org.mockito', name: 'mockito-core', version: '2.+'],

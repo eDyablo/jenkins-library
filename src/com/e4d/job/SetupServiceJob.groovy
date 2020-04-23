@@ -1,31 +1,16 @@
 package com.e4d.job
 
-import com.cloudbees.hudson.plugins.folder.Folder
+import com.e4d.git.GitConfig
 import com.e4d.git.GitSourceReference
-import hudson.model.Items
-import hudson.model.ParametersDefinitionProperty
+import com.e4d.job.IntegrateNugetPackageJob
 import hudson.model.StringParameterDefinition
-import hudson.tasks.LogRotator
-import jenkins.model.BuildDiscarderProperty
-import jenkins.model.Jenkins
-import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
-import org.jenkinsci.plugins.workflow.job.WorkflowJob
 
-class SetupServiceJob implements Job {
-  final def workflow
+class SetupServiceJob extends SetupJob {
   GitSourceReference sourceGit
   String serviceName
 
   SetupServiceJob(workflow) {
-    this.workflow = workflow
-  }
-
-  Jenkins getJenkins() {
-    Jenkins.get()
-  }
-
-  String getFullName() {
-    workflow.env.JOB_NAME
+    super(workflow)
   }
 
   def getParameterDefinitions() {
@@ -49,97 +34,152 @@ class SetupServiceJob implements Job {
     serviceName = serviceName ?: sourceGit.repository
   }
 
+  GitSourceReference getResolvedSourceRef() {
+    final gitConfig = new GitConfig()
+    gitConfig.with(DefaultValues.git)
+    new GitSourceReference(
+      scheme: sourceGit.host
+        ? sourceGit.scheme
+        : (gitConfig.host ? gitConfig.protocol : sourceGit.scheme),
+      host: sourceGit.host ?: gitConfig.host,
+      owner: sourceGit.owner ?: gitConfig.owner,
+      repository: sourceGit.repository,
+      branch: sourceGit.branch ?: gitConfig.branch,
+    )
+  }
+
+  String getWorkflowScript() {
+    '''
+    e4d.setupService {
+    }
+    '''
+  }
+
   void run() {
     workflow.stage('setup') {
-      setupService()
+      final sourceRef = resolvedSourceRef
+      final integrationScript = generateIntegrateJobScript()
+      jenkins {
+        folder('apps') {
+          folder(serviceName) {
+            folder('experiment') {
+              job('integrate') {
+                script integrationScript
+                discardBuilds inDays: 1
+                gitHub {
+                  project sourceRef.repositoryUrl
+                  pullRequestBuilder {
+                    organizations 'activehours', 'e4d'
+                    updateCommitStatus context: 'integrate'
+                  }
+                }
+              }
+              job('deploy') {
+                script """
+                  deployServiceImage {
+                    destination = 'dev : e4d-ci'
+
+                    rollback {
+                      always
+                    }
+                  }
+                """
+                discardBuilds inDays: 1
+                disableConcurrentBuilds
+              }
+            }
+            folder('develop') {
+              job('integrate') {
+                script integrationScript
+                discardBuilds afterAmount: 5
+                gitHub {
+                  project sourceRef.repositoryUrl
+                  pushTrigger
+                }
+              }
+              job('deploy') {
+                script """
+                  deployServiceImage {
+                    destination = 'dev'
+                    values = [
+                      deployment: [
+                        environment: 'dev'
+                      ],
+                    ]
+                  }
+                """
+                discardBuilds afterAmount: 5
+                disableConcurrentBuilds
+              }
+            }
+            folder('production') {
+              job('integrate') {
+                script integrationScript
+                discardBuilds afterAmount: 10
+                gitHub {
+                  project sourceRef.repositoryUrl
+                }
+              }
+              job('deploy') {
+                script """
+                  deployServiceImage {
+                    destination = 'production'
+
+                    options.testing.skip = true
+
+                    values = [
+                      deployment: [
+                        environment: 'production'
+                      ],
+                    ]
+
+                    notify {
+                      success {
+                        leadTimeTracker service: '${ serviceName }'
+                      }
+                      failure {
+                        slack url: '#e4d.slack.global'
+                      }
+                    }
+                  }
+                """
+                discardBuilds afterAmount: 10
+                disableConcurrentBuilds
+              }
+            }
+          }
+        }
+      }
     }
   }
 
-  void setupService() {
-    final applications = jenkins.allItems(Folder).find {
-      it.fullName == 'zapps'
-    } as Folder ?: jenkins.createProject(Folder, 'zapps') as Folder
+  String generateIntegrateJobScript() {
+    final script = ['|integrateService {']
 
-    final service = applications.allItems(Folder).find {
-      it.name == serviceName
-    } as Folder ?: applications.createProject(Folder, serviceName) as Folder
-
-    [
-      [name: 'experiment', destination: 'dev : e4d-ci'],
-      [name: 'develop', destination: 'dev'],
-      [name: 'production', destination: 'production'],
-    ].each { options ->
-      setupEnv(options, service)
-    }
-  }
-
-  void setupEnv(Map options=[:], Folder service) {
-    final env = service.allItems(Folder).find {
-      it.name == options.name
-    } as Folder ?: service.createProject(Folder, options.name) as Folder
-
-    setupIntegrate(options, env)
-    setupDeploy(options, env)
-  }
-
-  void setupIntegrate(Map options=[:], Folder env) {
-    final integrate = env.allItems(WorkflowJob).find {
-      it.name == 'integrate'
-    } as WorkflowJob ?: env.createProject(WorkflowJob, 'integrate') as WorkflowJob
-
-    integrate.definition = new CpsFlowDefinition(
-      integrateServiceScript, true)
-
-    integrate.addProperty(new BuildDiscarderProperty(
-      new LogRotator('1', '', '', '')))
-
-    integrate.save()
-  }
-
-  String getIntegrateServiceScript() {
-    final script = ['integrateService {']
-
-    script << "\tserviceConfig.service = '${ serviceName }'"
+    script << "|  serviceConfig.service = '${ serviceName }'"
 
     if (sourceGit.organizationUrl) {
-      script << "\tgitConfig.baseUrl = '${ sourceGit.organizationUrl }'"
+      script << "|  gitConfig.baseUrl = '${ sourceGit.organizationUrl }'"
     } else if (sourceGit.organization) {
-      script << "\tgitConfig.owner = '${ sourceGit.organization }'"
+      script << "|  gitConfig.owner = '${ sourceGit.organization }'"
     }
 
     if (sourceGit.repository && sourceGit.repository != serviceName) {
-      script << "\tgitConfig.repository = '${ sourceGit.repository }'"
+      script << "|  gitConfig.repository = '${ sourceGit.repository }'"
     }
 
     if (sourceGit.branch) {
-      script << "\tgitConfig.branch = '${ sourceGit.branch }'"
+      script << "|  gitConfig.branch = '${ sourceGit.branch }'"
     }
 
     if (sourceGit.directory) {
-      script << "\tsourceRootDir ='${ sourceGit.directory }'"
+      script << "|  sourceRootDir ='${ sourceGit.directory }'"
     }
 
-    script << '\tdeploymentJob = \'deploy\''
+    script << '|  deploymentJob = \'deploy\''
 
-    script << '}'
+    script << '|}'
 
-    script.join('\n')
-  }
-
-  void setupDeploy(Map options=[:], Folder env) {
-    final deploy = env.allItems(WorkflowJob).find {
-      it.name == 'deploy'
-    } as WorkflowJob ?: env.createProject(WorkflowJob, 'deploy') as WorkflowJob
-
-    deploy.definition = new CpsFlowDefinition("""\
-      deployServiceImage {
-        destination = '${ options.destination }'
-      }
-    """.stripIndent(), true)
-
-    deploy.addProperty(new BuildDiscarderProperty(
-      new LogRotator('1', '', '', '')))
-
-    deploy.save()
+    script.join('\n').stripMargin()
   }
 }

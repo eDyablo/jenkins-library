@@ -11,7 +11,7 @@ def call(
   println "\nParameter: namespace => ${namespace}"
   
   podTemplate(
-    cloud: "kubernetes-dev",
+    cloud: "kubernetes",
     label: "slv_${JOB_BASE_NAME}_${BUILD_ID}".toLowerCase(),
     annotations:  [
       podAnnotation(key: "iam.amazonaws.com/role", value: "RoleCiSlave")

@@ -68,6 +68,17 @@ class GitSourceReference {
     owner
   }
 
+  GitSourceReference withBranch(String newBranch) {
+    GitSourceReference.newInstance(
+      branch: newBranch,
+      directory: directory,
+      host: host,
+      owner: owner,
+      repository: repository,
+      scheme: scheme,
+    )
+  }
+
   static class Parser {
     String branch
     String directory
@@ -151,6 +162,7 @@ class GitSourceReference {
   }
 
   boolean getIsValid() {
+    (host && owner && repository) ||
     (owner && repository && !host) ||
     (repository && !owner && !host)
   }

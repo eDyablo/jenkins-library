@@ -13,13 +13,33 @@ class DockerTool {
   String build(Map options=[:]) {
     final path = options.path ?: '.'
     final imageIdFile = getImageIdFile(path)
-    shell.execute(script: [
+    final envs = []
+    final commands = [
+      'set -o errexit',
+    ]
+    if (options.registry) {
+      final loginWords = [
+        'docker', 'login',
+      ]
+      if (options.username) {
+        envs.add(cmdEnv('login_username', options.username))
+        loginWords.add(cmdOpt('username', '${login_username}'))
+      }
+      if (options.password) {
+        envs.add(cmdEnv('login_password', options.password))
+        loginWords.add(cmdOpt('password', '${login_password}'))
+      }
+      loginWords.add(options.registry)
+      commands.add(loginWords.join(' '))
+    }
+    commands.add([
       'docker build',
       cmdOpt('build-arg', options.buildArgs),
       cmdOpt('network', options.network),
       cmdOpt('iidfile', imageIdFile),
       path,
-    ].findAll().join(' '), [])
+    ].findAll().join(' '))
+    shell.execute(script: commands.findAll().join('\n'), envs)
     shell.readFile(file: imageIdFile)
   }
 
@@ -40,6 +60,43 @@ class DockerTool {
     shell.execute(script: words.findAll().join(' '), envs)
   }
 
+  void push(Map options=[:], String image) {
+    final targetImage = [options.registry, options.name ?: image].findAll().join('/')
+    final commands = [
+      'set -o errexit',
+    ]
+    final envs = []
+    if (options.registry) {
+      final loginCmd = [
+        'docker', 'login',
+      ]
+      if (options.username) {
+        envs.add(cmdEnv('login_username', options.username))
+        loginCmd.add(cmdOpt('username', '${login_username}'))
+      }
+      if (options.password) {
+        envs.add(cmdEnv('login_password', options.password))
+        loginCmd.add(cmdOpt('password', '${login_password}'))
+      }
+      loginCmd.add(options.registry)
+      commands.add(loginCmd.join(' '))
+    }
+    if (options.registry || options.name) {
+      commands.add(
+        ['docker', 'tag', image, targetImage].join(' ')
+      )
+    }
+    commands.add(
+      ['docker', 'push', targetImage].join(' ')
+    )
+    if ((options.registry || options.name) && !options.keepImage) {
+      commands.add(
+        ['docker', 'rmi', cmdOpt('no-prune', true), targetImage].join(' ')
+      )
+    }
+    shell.execute(script: commands.join('\n'), envs)
+  }
+
   String getImageIdFile(String key) {
     final digest = MessageDigest.getInstance('MD5').digest(key.bytes).encodeHex()
     final name = [this.class.simpleName, hashCode(), 'build', digest].join('.')
@@ -56,7 +113,7 @@ class DockerTool {
     }.join(' ')
   }
 
-  private String cmdOpt(String name, String value) {
-    "--${ name }=${ value }".toString()
+  private String cmdOpt(String name, def value) {
+    (name && value) ? "--${ name }=${ value }".toString() : ''
   }
 }

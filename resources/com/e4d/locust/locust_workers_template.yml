@@ -1,0 +1,55 @@
+# ---- Create LOCUST slaves(workers) Deployment----
+kind: Deployment
+apiVersion: apps/v1beta1
+metadata:
+  name: locust-worker
+  namespace: ${NAMESPACE ?: namespace }
+  labels:
+    name: locust
+    role: worker
+spec:
+  replicas: ${ EXPECT_SLAVES ?: expectSlaves }
+  # replicas: <%= EXPECT_SLAVES ?: expectSlaves + 1 %>
+  template:
+    metadata:
+      name: locust-worker
+      labels:
+        name: locust
+        role: worker
+    spec:
+      containers:
+        - name: locust-worker
+          image: artifacts.k8s.us-west-2.dev.e4d.com:8082/locust:latest
+          env:
+            - name: LOCUST_MODE
+              value: worker
+            - name: LOCUST_MASTER
+              value: locust-master
+            - name: TARGET_HOST
+              value: ${HOST ?: host }
+            - name: LOCUSTFILE_PATH
+              value: ${LOCUSTFILE_PATH ?: locustFile }
+            - name: LOCUST_TEST
+              value: ${LOCUST_CLASS ?: locustClass }
+            - name: ADD_OPTIONS
+              value: --logfile=locust-slave.log
+#            - name: MAX_LATENCY
+#              value: "11000"
+            - name: ADD_COMMAND
+              value: ${ADD_COMMAND ?: 'ls -la && echo start sleeping for 10 sec. && sleep 10 && echo Stopping Container.' }
+          volumeMounts:
+            - name: load-test
+              mountPath: /locust-tasks/load_test
+              readOnly: true
+            - name: configs
+              mountPath: /locust-tasks/load_test/configs
+              readOnly: true
+      imagePullSecrets:
+        - name: regsecret
+      volumes:
+        - name: load-test
+          configMap:
+            name: load-test
+        - name: configs
+          configMap:
+            name: configs

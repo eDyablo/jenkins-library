@@ -13,65 +13,48 @@ import com.e4d.step.*
 import hudson.model.*
 import java.net.URI
 
-class IntegrateHelmChartJob extends PipelineJob {
+class IntegrateHelmChartJob extends IntegrateJob {
   def chart
-  def source
   FileHub fileHub
-  GitConfig gitConfig = new GitConfig()
   HelmTool helm
   NexusConfig nexusConfig = new NexusConfig()
-  String sourceRoot
 
   IntegrateHelmChartJob(pipeline=ContextRegistry.context.pipeline) {
     super(pipeline)
-    gitConfig.with(DefaultValues.git)
     nexusConfig.with(DefaultValues.nexus)
     helm = new HelmTool(new PipelineShell(pipeline))
     fileHub = new CurlFileHub(new PipelineShell(pipeline))
-  }
-
-  def loadParameters(params) {
-    if (params?.sha1?.trim()) {
-      gitConfig.branch = params.sha1
-    }
   }
 
   void run() {
     stage('checkout') {
       checkout()
     }
-    stage('test') {
+    stage('study') {
+      source += study()
+    }
+    stage('test', source.chartMetadataFile) {
       testChart()
     }
-    stage('package') {
+    stage('package', source.chartMetadataFile) {
       packageChart()
     }
-    stage('publish') {
+    stage('publish', chart) {
       publishChart()
     }
-    stage('deploy') {
+    stage('deploy', chart) {
       deployChart()
     }
   }
 
-  void checkout() {
-    source = checkoutSource(
-      pipeline: pipeline,
-      baseUrl: gitConfig.baseUrl,
-      repository: gitConfig.repository,
-      branch: gitConfig.branch,
-      credsId: gitConfig.credsId,
-    )
-    source.dir = [source.dir, sourceRoot].findAll {
-      it?.trim()
-    }.join('/')
-    if (!pipeline.fileExists(source.dir)) {
-      pipeline.error("The directory '${ source.dir }' does not exist")
+  def study() {
+    final chartMetadataFile = [source.dir, 'Chart.yaml'].join('/')
+    if (pipeline.fileExists(chartMetadataFile)) {
+      return [chartMetadataFile: chartMetadataFile]
+    } else {
+      pipeline.unstable("chart metadata (Chart.yaml) is not found in '${ source.dir }'")
+      return [:]
     }
-  }
-
-  def checkoutSource(Map options) {
-    new CheckoutRecentSourceStep(options).run()
   }
 
   void packageChart() {
@@ -84,27 +67,6 @@ class IntegrateHelmChartJob extends PipelineJob {
 
   void testChart() {
     helm.lintChart(path: source.dir)
-  }
-
-  SemanticVersion getSourceVersion() {
-    new SemanticVersionBuilder().fromGitTag(source?.tag).build()
-  }
-
-  SemanticVersion getArtifactVersion() {
-    def version = sourceVersion
-    if (version.build) {
-      final builder = new SemanticVersionBuilder()
-        .major(version.major)
-        .minor(version.minor)
-        .patch(version.patch)
-        .prerelease(version.prereleaseIds)
-      if (source.timestamp) {
-        builder.prerelease('sut', source.timestamp)
-      }
-      builder.build(version.buildIds)
-      version = builder.build()
-    }
-    return version
   }
 
   URI getChartRepositoryURI() {
@@ -137,41 +99,5 @@ class IntegrateHelmChartJob extends PipelineJob {
       ],
       wait: true,
     )
-  }
-
-  def declare(Closure code) {
-    code.delegate = new JobDeclaration(this)
-    code.resolveStrategy = Closure.DELEGATE_ONLY
-    code.call()
-  }
-
-  static class JobDeclaration {
-    final IntegrateHelmChartJob job
-
-    JobDeclaration(IntegrateHelmChartJob job) {
-      this.job = job
-    }
-
-    void source(Closure code) {
-      code.delegate = new SourceDeclaration(job)
-      code.resolveStrategy = Closure.DELEGATE_ONLY
-      code.call()
-    }
-  }
-
-  static class SourceDeclaration {
-    final IntegrateHelmChartJob job
-
-    SourceDeclaration(IntegrateHelmChartJob job) {
-      this.job = job
-    }
-
-    void setGitRepository(String repository) {
-      job.gitConfig.repository = repository
-    }
-
-    void setRoot(String path) {
-      job.sourceRoot = path
-    }
   }
 }

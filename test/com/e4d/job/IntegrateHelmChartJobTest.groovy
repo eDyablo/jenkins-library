@@ -15,7 +15,7 @@ import static org.mockito.Mockito.any
 
 class IntegrateHelmChartJobNewlyCreatedTest {
   final pipeline = new DummyPipeline()
-  final job = new IntegrateHelmChartJob(pipeline)
+  final job = spy(new IntegrateHelmChartJob(pipeline))
 
   @Test void has_intialized_file_hub() {
     assertThat(job.fileHub, allOf(
@@ -70,41 +70,13 @@ class IntegrateHelmChartJobTest {
     job.fileHub = fileHub
     doReturn([:]).when(job).checkoutSource(any(Map))
     when(helm.packageChart(any(Map))).thenReturn([:])
+    doNothing().when(job).markStageSkipped(argThat(instanceOf(String)))
   }
 
   @Test void run_does_checkout_stage() {
     job.run()
     verify(pipeline).stage(eq('checkout'), any(Closure))
     verify(job).checkout()
-  }
-
-  @Test void does_checkout_from_the_repository_set_in_its_git_config() {
-    job.gitConfig.with {
-      baseUrl = 'protocol://host/owner'
-      repository = 'repository'
-    }
-    job.checkout()
-    verify(job).checkoutSource(argThat(allOf(
-      hasEntry('baseUrl', 'protocol://host/owner'),
-      hasEntry('repository', 'repository'),
-    )))
-  }
-
-  @Test void does_checkout_using_credentials_set_in_its_git_config() {
-    job.gitConfig.credsId = 'credentials'
-    job.checkout()
-    verify(job).checkoutSource(argThat(hasEntry('credsId', 'credentials')))
-  }
-
-  @Test void does_checkout_from_the_branch_set_in_its_git_config() {
-    job.gitConfig.branch = 'branch'
-    job.checkout()
-    verify(job).checkoutSource(argThat(hasEntry('branch', 'branch')))
-  }
-
-  @Test void when_load_parameters_set_git_config_branch_equal_to_sha1_if_it_is_set() {
-    job.loadParameters([sha1: 'sha1'])
-    assertThat(job.gitConfig.branch, is(equalTo('sha1')))
   }
 
   @Test void when_load_parameters_keeps_git_config_branch_intact_if_sha1_is_not_set() {
@@ -129,6 +101,7 @@ class IntegrateHelmChartJobTest {
   }
 
   @Test void run_does_package_stage() {
+    doReturn(chartMetadataFile: 'chart metadata').when(job).study()
     job.run()
     verify(pipeline).stage(eq('package'), any(Closure))
     verify(job).packageChart()
@@ -148,6 +121,7 @@ class IntegrateHelmChartJobTest {
   }
 
   @Test void run_does_testing_stage() {
+    doReturn(chartMetadataFile: 'chart').when(job).study()
     job.run()
     verify(pipeline).stage(eq('test'), any(Closure))
     verify(job).testChart()
@@ -213,6 +187,7 @@ class IntegrateHelmChartJobTest {
   }
 
   @Test void run_publishes_chart_in_publish_stage() {
+    job.chart = [path: 'chart path']
     job.run()
     verify(pipeline).stage(eq('publish'), any(Closure))
     verify(job).publishChart()
@@ -277,32 +252,6 @@ class IntegrateHelmChartJobTest {
         hasItem(hasToString(containsString("helmChart='chart'")))
       )
     ))
-  }
-
-  @Test void checked_out_source_has_dir_relative_to_repository_and_ends_up_with_source_root() {
-    job.sourceRoot = 'source dir'
-    doReturn([dir: 'checkout dir']).when(job).checkoutSource(any(Map))
-    job.checkout()
-    assertThat(job.source.dir, is(equalTo('checkout dir/source dir')))
-  }
-
-  @Test void checked_out_source_is_not_under_source_root_when_the_source_root_is_null_or_empty_or_whitespace() {
-    doReturn([dir: 'checkout dir']).when(job).checkoutSource(any(Map))
-    [null, '', ' ', '\t', '\n', ' \t \n'].each { sourceRoot ->
-      job.sourceRoot = sourceRoot
-      job.checkout()
-      assertThat("\n     For: '${ sourceRoot }'",
-        job.source.dir, is(equalTo('checkout dir')))
-    }
-  }
-
-  @Test void checkout_raises_an_error_when_source_root_does_not_exists() {
-    job.sourceRoot = 'source root'
-    doReturn([dir: 'checkout dir']).when(job).checkoutSource(any(Map))
-    when(pipeline.fileExists('checkout dir/source root dir')).thenReturn(false)
-    job.checkout()
-    verify(pipeline).error(argThat(
-      containsString('\'checkout dir/source root\' does not exist')))
   }
 
   @Test void package_chart_updates_chart_dependencies() {

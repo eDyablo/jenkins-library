@@ -16,6 +16,7 @@ class DockerContainerShellTest {
     final shell = spy(new DockerContainerShell(
       hostShell: host,
       image: 'image',
+      shellProgram: 'shell',
       lifetime: Duration.ofSeconds(1),
     ))
     when(shell.getContainerName('image')).thenReturn('container')
@@ -28,7 +29,7 @@ class DockerContainerShellTest {
           equalTo('script'),
           stringContainsInOrder(
             'docker create --rm --name=container',
-            '--entrypoint=sh', 
+            '--entrypoint=shell', 
             'image',
             '-c \'sleep 1\'',
             'docker start container',

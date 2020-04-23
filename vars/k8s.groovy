@@ -19,7 +19,7 @@ def defSecretEnvVar(Map args) {
 
 def configure(Map args) {
   return shell.execute("""
-    curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.8.6/bin/linux/amd64/kubectl
+    curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubectl
     chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl && mkdir ~/.kube
     set +x && echo "\$${args.config.key}" > ~/.kube/config && set -x
     kubectl config use-context ${args.context}

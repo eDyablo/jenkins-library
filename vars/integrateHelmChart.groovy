@@ -4,6 +4,7 @@ import com.e4d.ioc.ContextRegistry
 def call(Closure closure) {
   ContextRegistry.registerDefaultContext(this)
   runPipelineJob(
-    job: new IntegrateHelmChartJob(),
-    closure)
+    job: new IntegrateHelmChartJob(this),
+    closure
+  )
 }

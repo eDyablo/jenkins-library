@@ -23,6 +23,6 @@ class AwsStsTool {
     ]
     final String output = shell.execute([], script: commands.join('\n'),
       returnStdout: true, encoding: 'utf-8')
-    return new JsonSlurperClassic().parseText(output)
+    return JsonSlurperClassic.newInstance().parseText(output)
   }
 }

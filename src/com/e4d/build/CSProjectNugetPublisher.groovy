@@ -41,14 +41,18 @@ class CSProjectNugetPublisher implements Deployer {
       versionPrefix: versionPrefix,
       versionSuffix: versionSuffix,
     )
-    if (packed?.package) {
+    if (packed?.nugets) {
       if (context.nugetRepository?.hasNuget(name: project, version: packed.version)) {
         context.pipeline?.echo("WARNING: Nuget package ${ project }:${ packed.version } cannot be published over existing one")
       } else {
-        dotnet.nugetPush(packed.package,
-          source: server ?: context?.nuget?.server,
-          api_key: apiKey ?: context?.nuget?.api_key,
-        )
+        packed.nugets.findAll { nuget ->
+          nuget.endsWith('.nupkg') && !nuget.endsWith('.symbols.nupkg')
+        }.each { nuget ->
+          dotnet.nugetPush(nuget,
+            source: server ?: context?.nuget?.server,
+            api_key: apiKey ?: context?.nuget?.api_key,
+          )
+        }
       }
     }
   }

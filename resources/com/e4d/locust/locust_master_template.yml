@@ -1,0 +1,144 @@
+# ---- Create LOCUST master Deployment----
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: locust-master
+  namespace: ${NAMESPACE ?: namespace }
+  labels:
+    name: locust
+    role: master
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: locust-master
+      labels:
+        name: locust
+        role: master
+    spec:
+      containers:
+        - name: locust-master
+          image: artifacts.k8s.us-west-2.dev.e4d.com:8082/locust:latest
+          env:
+            - name: LOCUST_MODE
+              value: master
+            - name: TARGET_HOST
+              value: ${TARGET_HOST ?: host }
+            - name: LOCUSTFILE_PATH
+              value: ${LOCUSTFILE_PATH ?: locustFile }
+            - name: LOCUST_TEST
+              value: ${LOCUST_CLASS ?: locustClass }
+            - name: EXPECT_SLAVES
+              value: "${ EXPECT_SLAVES ?: expectSlaves }"
+            - name: ADD_OPTIONS
+              value: "-c ${ NUM_CLIENTS ?: numClients } -r ${ HATCH_RATE ?: hatchRate} -t${RUN_TIME ?: runTime } --no-web --csv=${REPORT_FILE_NAME ?: reportFileName}"
+              #value: "-c ${ NUM_CLIENTS ?: numClients } -r ${ HATCH_RATE ?: hatchRate} -t${RUN_TIME ?: runTime } --no-web --csv=${REPORT_FILE_NAME ?: reportFileName} --print-stats --logfile=${LOG_FILE_NAME ?: logFileName}"
+#            - name: MAX_LATENCY
+#              value: "11000"
+#            - name: LOAD_TEST_TIMEOUT # test timeout in seconds for timeout_listener
+#              value: "120"
+#            - name: MAX_REQUESTS # set max number requests to be generated - the same as Taurus "iterations"
+#              value: 10000
+# Enable master FIXED_RPS listeners with variables
+#            - name: TARGET_RPS
+#              value: "15"
+#            - name: SLAVE_COUNT
+#              value: "4"
+            - name: ADD_COMMAND
+              value: ${ADD_COMMAND ?: 'ls -la && echo start sleeping for 10 sec. && sleep 10 && echo Stopping Container.' }
+          ports:
+            - name: loc-master-web
+              containerPort: 8089
+              protocol: TCP
+            - name: loc-master-p1
+              containerPort: 5557
+              protocol: TCP
+            - name: loc-master-p2
+              containerPort: 5558
+              protocol: TCP
+            - name: loc-master-p3
+              containerPort: 5559
+              protocol: TCP
+            - name: loc-master-p4
+              containerPort: 5560
+              protocol: TCP
+            - name: loc-master-p5
+              containerPort: 5561
+              protocol: TCP
+            - name: loc-master-p6
+              containerPort: 5562
+              protocol: TCP
+            - name: loc-master-p7
+              containerPort: 5563
+              protocol: TCP
+          volumeMounts:
+            - name: load-test
+              mountPath: /locust-tasks/load_test
+              readOnly: true
+            - name: configs
+              mountPath: /locust-tasks/load_test/configs
+              readOnly: true
+          resources:
+            limits:
+              cpu: ${ service.limits?.cpu ?: 0.5 }
+              memory: ${ service.limits?.memory ?: '400Mi' }
+            requests:
+              cpu: ${ service.requests?.cpu ?: 0.5 }
+              memory: ${ service.requests?.memory ?: '400Mi' }
+      imagePullSecrets:
+        - name: regsecret
+      volumes:
+        - name: load-test
+          configMap:
+            name: load-test
+        - name: configs
+          configMap:
+            name: configs
+---
+# ---- Create LOCUST Services ----
+kind: Service
+apiVersion: v1
+metadata:
+  name: locust-master
+  namespace: ${NAMESPACE ?: namespace }
+  labels:
+    name: locust
+    role: master
+spec:
+  ports:
+    - port: 8089
+      targetPort: loc-master-web
+      protocol: TCP
+      name: loc-master-web
+    - port: 5557
+      targetPort: loc-master-p1
+      protocol: TCP
+      name: loc-master-p1
+    - port: 5558
+      targetPort: loc-master-p2
+      protocol: TCP
+      name: loc-master-p2
+    - port: 5559
+      targetPort: loc-master-p3
+      protocol: TCP
+      name: loc-master-p3
+    - port: 5560
+      targetPort: loc-master-p4
+      protocol: TCP
+      name: loc-master-p4
+    - port: 5561
+      targetPort: loc-master-p5
+      protocol: TCP
+      name: loc-master-p5
+    - port: 5562
+      targetPort: loc-master-p6
+      protocol: TCP
+      name: loc-master-p6
+    - port: 5563
+      targetPort: loc-master-p7
+      protocol: TCP
+      name: loc-master-p7
+  selector:
+    name: locust
+    role: master
+  type: LoadBalancer

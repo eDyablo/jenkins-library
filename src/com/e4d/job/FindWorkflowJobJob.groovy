@@ -1,6 +1,5 @@
 package com.e4d.job
 
-import com.cloudbees.hudson.plugins.folder.Folder
 import hudson.model.StringParameterDefinition
 import jenkins.model.Jenkins
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition
@@ -11,9 +10,7 @@ import org.jenkinsci.plugins.workflow.job.WorkflowJob
  * match specific name pattern and their script contains text matches
  * the specified pattern.
  */
-class FindWorkflowJobJob implements Job {
-  private def workflow
-  
+class FindWorkflowJobJob extends MaintenanceJob {  
   /**
    * Regular expression pattern for job full name.
    */
@@ -24,12 +21,8 @@ class FindWorkflowJobJob implements Job {
    */
   String scriptRegex = ''
 
-  private Jenkins getJenkins() {
-    Jenkins.instanceOrNull
-  }
-
-  String getFullName() {
-    workflow.env.JOB_NAME
+  FindWorkflowJobJob(workflow) {
+    super(workflow)
   }
 
   def getParameterDefinitions() {
@@ -43,6 +36,13 @@ class FindWorkflowJobJob implements Job {
     ]
   }
 
+  String getWorkflowScript() {
+    '''
+    e4d.findWorkflowJob {
+    }
+    '''
+  }
+
   void loadParameters() {
     if (workflow.params['full name regex'] != null) {
       fullNameRegex = workflow.params['full name regex']
@@ -50,9 +50,6 @@ class FindWorkflowJobJob implements Job {
     if (workflow.params['script regex'] != null) {
       scriptRegex = workflow.params['script regex']
     }
-  }
-
-  void initialize() {
   }
 
   void run() {

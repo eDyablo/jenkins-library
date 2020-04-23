@@ -48,7 +48,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_packed_nuget_to_specified_server() {
     // Arrange
     server = 'server'
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy(emptyContext)
     // Assert
@@ -58,7 +58,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_nuget_using_nuget_server_from_context_when_no_server_specified() {
     // Arrange
     server = null
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy([nuget: [server: 'server from context']])
     // Assert
@@ -68,7 +68,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_nuget_preffering_specified_server_over_nuget_server_from_context() {
     // Arrange  
     server = 'server'
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy([nuget: [server: 'server from context']])
     // Assert
@@ -78,7 +78,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_nuget_with_specified_api_key() {
     // Arrange
     apiKey = 'key'
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy(emptyContext)
     // Assert
@@ -88,7 +88,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_nuget_using_nuget_api_key_from_context_when_no_api_key_specified() {
     // Arrange
     apiKey = null
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy([nuget: [api_key: 'key from context']])
     // Assert
@@ -98,11 +98,11 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
   @Test void deploy_pushes_nuget_preffering_specified_api_key_over_nuget_api_key_from_context() {
     // Arrange
     apiKey = 'key'
-    doReturn([package: 'package']).when(dotnet).csprojPack(any(), eq(project))
+    doReturn(nugets: ['package.nupkg']).when(dotnet).csprojPack(any(), eq(project))
     // Act
     deploy([nuget: [api_key: 'key from context']])
     // Assert
-    verify(dotnet).nugetPush(mapContains(api_key: 'key'), eq('package'))
+    verify(dotnet).nugetPush(mapContains(api_key: 'key'), eq('package.nupkg'))
   }
 
   @Test void can_deploy_when_no_changed_file_paths_in_context() {
@@ -194,11 +194,11 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
     final context = [nugetRepository: mock(NugetRepository)]
     doReturn(false).when(context.nugetRepository).hasNuget(mapContains(
       name: 'new project', version: 'new version'))
-    doReturn([package: 'new package']).when(dotnet).csprojPack(any(), eq('new project'))
+    doReturn(nugets: ['new package.nupkg']).when(dotnet).csprojPack(any(), eq('new project'))
     // Act
     deploy(context)
     // Verify
-    verify(dotnet).nugetPush(any(), eq('new package'))
+    verify(dotnet).nugetPush(any(), eq('new package.nupkg'))
   }
 
   @Test void deploy_warns_when_package_for_the_project_exists_in_the_repository() {
@@ -209,7 +209,7 @@ class CSProjectNugetPublisherTest extends CSProjectNugetPublisher {
       nugetRepository: mock(NugetRepository),
       pipeline: mock(DummyPipeline),
     ]
-    doReturn([package: 'package', version: 'version']).when(dotnet).csprojPack(any(), any())
+    doReturn(nugets: ['package.nupkg'], version: 'version').when(dotnet).csprojPack(any(), any())
     doReturn(true).when(context.nugetRepository).hasNuget(mapContains(
       name: 'project', version: 'version'))
     // Act

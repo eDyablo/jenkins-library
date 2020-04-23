@@ -1,11 +1,14 @@
 package com.e4d.job
 
 import com.cloudbees.groovy.cps.NonCPS
+import com.e4d.aws.sts.*
 import com.e4d.build.*
 import com.e4d.curl.*
 import com.e4d.docker.*
 import com.e4d.dotnet.*
 import com.e4d.ioc.*
+import com.e4d.jira.*
+import com.e4d.job.Option
 import com.e4d.k8s.* 
 import com.e4d.nexus.*
 import com.e4d.nuget.*
@@ -18,6 +21,7 @@ import hudson.model.*
 
 class DeployServiceJob extends PipelineJob {
   ArtifactReference _artifact
+  AwsStsTool awsSts
   DeployDestination destination = new DeployDestination()
   Map values = [:]
   NexusConfig nexusConfig = new NexusConfig()
@@ -32,6 +36,9 @@ class DeployServiceJob extends PipelineJob {
     ],
     testing: [
       skip: false,
+    ],
+    rollback: [
+      when: Option.When.ON_FAILURE,
     ],
   ]
 
@@ -50,6 +57,7 @@ class DeployServiceJob extends PipelineJob {
 
   DeployServiceJob(pipeline=ContextRegistry.context.pipeline) {
     super(pipeline)
+    awsSts = new AwsStsTool(new PipelineShell(pipeline))
     curl = new CurlTool(pipeline)
     k8s = new K8sClient(pipeline)
     tar = new TarTool(pipeline)
@@ -133,7 +141,11 @@ class DeployServiceJob extends PipelineJob {
       rollback(deployment)
       throw any
     }
-    report()
+    conclude(deployment)
+  }
+
+  boolean getAlwaysRollback() {
+    options.rollback.when.any { it == Option.When.ALWAYS }
   }
 
   def pull() {
@@ -319,7 +331,7 @@ class DeployServiceJob extends PipelineJob {
         "SERVICE_HOST_CREDS=${ serviceHost.creds }",
         "SERVICE_URL=${ serviceUrl }",
         "SERVICE_ENDPOINT=${ serviceEndpoint }",
-      ]
+      ] + tempAwsCreds
       pythonTest(env)
       dotnetTest(env)
     }
@@ -348,10 +360,24 @@ class DeployServiceJob extends PipelineJob {
     }
   }
 
-  def report() {
+  def conclude(deployment) {
     stage('report') {
-      pipeline.echo(buildReport())
+      if (alwaysRollback) {
+        rollback(deployment)
+      } else {
+        pipeline.echo(buildReport())
+      }
+      createJiraIssue()
     }
+  }
+
+  void createJiraIssue() {
+    JiraTool.newInstance(pipeline).createIssue(
+      'JC', '*Reason',
+      artifact.name,
+      destination.context,
+      [artifact.name, artifact.tag].join('-')
+    )
   }
 
   def rollback(deployment) {
@@ -598,5 +624,29 @@ class DeployServiceJob extends PipelineJob {
     pipeline.withCredentials(nexusCreds) {
       return [pipeline.env.user, pipeline.env.password]
     }
+  }
+
+  def getTempAwsCreds() {
+    if (values.service?.iamrole) {
+      final role = awsSts.assumeRole(
+        "arn:aws:iam::429750608758:role/${ values.service.iamrole }", 'ci',
+        duration_seconds: 1800, region: 'us-west-2'
+      )
+      return [
+        "AWS_ACCESS_KEY_ID=\"${ role.Credentials.AccessKeyId }\"",
+        "AWS_SECRET_ACCESS_KEY=\"${ role.Credentials.SecretAccessKey }\"",
+        "AWS_SESSION_TOKEN=\"${ role.Credentials.SessionToken }\"",
+        "AWS_DEFAULT_REGION=\"us-west-2\"",
+      ]
+    }
+    else {
+      return []
+    }
+  }
+
+  void rollback(Closure definition) {
+    definition.delegate = new declaration.RollbackDeclaration(this)
+    definition.resolveStrategy = Closure.DELEGATE_ONLY
+    definition.call()
   }
 }

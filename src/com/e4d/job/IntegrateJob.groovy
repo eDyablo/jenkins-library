@@ -7,9 +7,11 @@ import com.e4d.git.GitSourceReference
 import com.e4d.step.CheckoutRecentSourceStep
 
 class IntegrateJob extends PipelineJob {
+  boolean publishPrereleaseVersion = true
   def source
   GitConfig gitConfig = new GitConfig()
   GitSourceReference gitSourceRef = new GitSourceReference()
+  String artifactBaseName
 
   IntegrateJob(pipeline) {
     super(pipeline)
@@ -17,7 +19,9 @@ class IntegrateJob extends PipelineJob {
   }
 
   def loadParameters(params) {
-    gitConfig.branch = params?.sha1?.trim() ?: gitConfig.branch
+    if (params?.sha1?.trim()) {
+      gitSourceRef = gitSourceRef.withBranch(params.sha1.trim())
+    }
   }
 
   void initializeJob() {
@@ -33,6 +37,7 @@ class IntegrateJob extends PipelineJob {
       owner: gitSourceRef.owner ?: gitConfig.owner,
       repository: gitSourceRef.repository,
       branch: gitSourceRef.branch ?: gitConfig.branch,
+      directory: gitSourceRef.directory,
     )
   }
 
@@ -74,45 +79,9 @@ class IntegrateJob extends PipelineJob {
     return version
   }
 
-  def declare(Closure code) {
-    code.delegate = new JobDeclaration(this)
-    code.resolveStrategy = Closure.DELEGATE_ONLY
-    code.call()
-  }
-
-  static class JobDeclaration {
-    final IntegrateJob job
-
-    JobDeclaration(IntegrateJob job) {
-      this.job = job
-    }
-
-    void source(Closure code) {
-      code.delegate = new SourceDeclaration(job)
-      code.resolveStrategy = Closure.DELEGATE_ONLY
-      code.call()
-    }
-  }
-
-  static class SourceDeclaration {
-    final IntegrateJob job
-
-    SourceDeclaration(IntegrateJob job) {
-      this.job = job
-    }
-
-    void git(String reference) {
-      job.gitSourceRef = new GitSourceReference(reference)
-    }
-
-    void git(Map options) {
-      job.gitSourceRef = new GitSourceReference(options)
-    }
-
-    void git(Closure code) {
-      code.delegate = [:]
-      code.call()
-      job.gitSourceRef = new GitSourceReference(code.delegate)
-    }
+  def declare(Closure definition) {
+    definition.delegate = new declaration.IntegrateJobDeclaration(this)
+    definition.resolveStrategy = Closure.DELEGATE_ONLY
+    definition.call()
   }
 }

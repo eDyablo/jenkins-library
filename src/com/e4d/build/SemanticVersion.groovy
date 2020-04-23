@@ -11,6 +11,8 @@ class SemanticVersion implements Comparable<SemanticVersion> {
 
   static final ZERO = new SemanticVersion([:])
 
+  static final ReleaseVersionPattern = /^\d+(\.\d+){0,2}$/
+
   SemanticVersion(Map options) {
     major = validCoreComponent(options, 'major')
     minor = validCoreComponent(options, 'minor')

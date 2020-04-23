@@ -60,4 +60,63 @@ class IntegrateNugetPackageJobDeclarationTest {
       hasProperty('directory', equalTo('directory')),
     ))
   }
+
+  @Test void skip_prerelease_sets_job_publish_prerelease_option_to_false() {
+    [
+      {
+        publishStrategy.skipPrereleaseVersion
+      },
+
+      {
+        publish {
+          strategy.skipPrereleaseVersion
+        }
+      },
+
+      {
+        publish {
+          strategy {
+            skipPrereleaseVersion
+          }
+        }
+      },
+
+      {
+        publishStrategy {
+          skipPrereleaseVersion
+        }
+      }
+    ].each {
+      job.publishPrereleaseVersion = true
+      job.declare(it)
+      assertThat(job.publishPrereleaseVersion, is(false))
+    }
+  }
+
+  @Test void testing_project_file_pattern_sets_job_test_project_file_pattern() {
+    [
+      {
+        testing {
+          projectFilePattern 'pattern'
+        }
+      },
+
+      {
+        testing {
+          projectFilePattern = 'pattern'
+        }
+      },
+
+      {
+        testing.projectFilePattern 'pattern'
+      },
+
+      {
+        testing.projectFilePattern = 'pattern'
+      },
+    ].each {
+      job.declare(it)
+      assertThat(job.testProjectFilePattern, is(equalTo('pattern')))
+    }
+  }
 }

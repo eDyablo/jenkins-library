@@ -4,6 +4,7 @@ import com.cloudbees.groovy.cps.NonCPS
 import com.e4d.build.CommandLineBuilder
 import com.e4d.shell.Shell
 import groovy.json.JsonSlurperClassic
+import static groovy.json.JsonOutput.*
 
 /**
  * A tool for dealing with dotnet artefacts like C# projects, nuget packages etc.
@@ -37,12 +38,12 @@ class DotnetTool {
    * @param options A map of arbitrary options
    */
   def test(Map options=[:], String baseDir) {
-    def resultsDir = options.resultsDir ?: '.'
-    def includeProjects = options.includeProjects ?: ''
-    def excludeProjects = options.excludeProjects ?: ''
-    def testFilter = options.testFilter ?: ''
-    def configuration = options.configuration ?: 'Debug'
-    def env = [
+    final String resultsDir = options.resultsDir ?: '.'
+    final String includeProjects = options.includeProjects ?: ''
+    final String excludeProjects = options.excludeProjects ?: ''
+    final String testFilter = options.testFilter ?: ''
+    final String configuration = options.configuration ?: 'Debug'
+    final env = [
       "BASE_DIR=\"${ options.baseDir ?: baseDir }\"",
       "INCLUDE_PROJECT_PATTERN=\"${ includeProjects }\"",
       "EXCLUDE_PROJECT_PATTERN=\"${ excludeProjects }\"",
@@ -71,6 +72,8 @@ class DotnetTool {
         nuget: '${package}',
         source: options.source,
         api_key: options.api_key,
+        symbolSource: options.symbolSource,
+        symbolApiKey: options.symbolApiKey,
       )
     ]
     shell.execute(script: commands.join('\n'), [])
@@ -88,27 +91,28 @@ class DotnetTool {
    * @param options.versionSuffix A string denotes version suffix
    *
    * @return  A map contains information about resulting package, contains
-   *          project, package, version
+   *          selector, project, version, list of nugets
    */
   def csprojPack(Map options=[:], String project) {
     final projectSelector = getProjectSelector(project)
-    final packageSelector = "*.${ nupkg }"
+    final packageSelector = "*${ nupkg }"
     final commands = [
       'set -o errexit',
-      "project=\$(find -name '${ projectSelector }')",
+      'function join { local d=$1; shift; printf "$1"; shift; printf "%s" "${@/#/$d}"; }',
+      "project=(\$(find -name '${ projectSelector }'))",
       'project_output=$(mktemp --directory --quiet)',
       getPackCommand(
         project: '${project}',
         output: '${project_output}',
-        version: options.version,
-        versionPrefix: options.versionPrefix,
-        versionSuffix: options.versionSuffix,
+        version: options.version?.toString(),
+        versionPrefix: options.versionPrefix?.toString(),
+        versionSuffix: options.versionSuffix?.toString(),
       ),
-      "package=\$(find \"\${project_output}\" -name '${ packageSelector }')",
-      getEchoCommand(
+      "nugets=\$(join '\",\"' \$(find \"\${project_output}\" -name '${ packageSelector }'))",
+      getEchoJsonCommand(
         selector: projectSelector,
         project: '${project}',
-        package: '${package}',
+        nugets: ['${nugets}'],
       ),
     ]
     final result = extractResult(shell.execute(
@@ -133,11 +137,11 @@ class DotnetTool {
     [
       'dotnet',
       'pack',
-      cmdOpt('output', dqw(options.output)),
+      cmdOpt('output', dqw(options.output?.toString())),
       cmdFlag('no-build'),
-      cmdProp('Version', options.version),
-      cmdProp('VersionPrefix', options.versionPrefix),
-      cmdOpt('version-suffix', options.versionSuffix),
+      cmdProp('Version', options.version?.toString()),
+      cmdProp('VersionPrefix', options.versionPrefix?.toString()),
+      cmdOpt('version-suffix', options.versionSuffix?.toString()),
       dqw(options.project),
     ].findAll().join(' ')
   }
@@ -149,8 +153,10 @@ class DotnetTool {
       'push',
       cmdOpt('source', options.source),
       cmdOpt('api-key', options.api_key),
+      cmdOpt('symbol-source', options.symbolSource),
+      cmdOpt('symbol-api-key', options.symbolApiKey),
       options.nuget,
-    ].join(' ')
+    ].findAll().join(' ')
   }
 
   private String dqw(String original) {
@@ -169,13 +175,8 @@ class DotnetTool {
     value ? [['-p', name].join(':'), value].join('=') : ''
   }
 
-  private String getEchoCommand(Map values) {
-    final lines = ['echo "{']
-    lines.add(values.collect { key, value ->
-      "  \\\"${ key }\\\": \\\"${ value }\\\"".toString()
-    }.join(',\n'))
-    lines.add('}"')
-    lines.join('\n')
+  private String getEchoJsonCommand(Map values) {
+    "echo \"${ prettyPrint(toJson(values)).replaceAll('"', '\\\\"') }\""
   }
 
   @NonCPS
@@ -190,6 +191,6 @@ class DotnetTool {
 
   private String extractVersion(Map options) {
     final project = (options.project?.split('/')?.last() ?: '') - ".${ csproj }"
-    (options.package?.split('/')?.last() ?: '') - "${ project }." - ".${ nupkg }"
+    (options.nugets?.first()?.split('/')?.last() ?: '') - "${ project }." - ".${ nupkg }"
   }
 }

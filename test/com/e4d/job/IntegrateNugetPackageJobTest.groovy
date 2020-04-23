@@ -20,6 +20,7 @@ class IntegrateNugetPackageJobTest {
 
   @Before void beforeEachTest() {
     reset(job)
+    job.gitSourceRef = new GitSourceReference('repository')
     doReturn([:]).when(job).checkoutSource(argThat(any(Map)))
     doNothing().when(job).markStageSkipped(argThat(instanceOf(String)))
   }
@@ -364,16 +365,16 @@ class IntegrateNugetPackageJobTest {
     assertThat(job.study(), not(hasEntry('dockerfile', 'source dir/Dockerfile')))
   }
 
-  @Test void load_parameters_set_git_config_branch_to_sha1_when_it_is_defined() {
+  @Test void load_parameters_set_git_source_reference_branch_to_sha1_when_it_is_defined() {
     // Arrange
-    job.gitConfig.branch = 'branch'
+    job.gitSourceRef = new GitSourceReference(branch: 'branch')
     // Act
     job.loadParameters([sha1: 'sha1'])
     // Assert
-    assertThat(job.gitConfig.branch, is(equalTo('sha1')))
+    assertThat(job.gitSourceRef.branch, is(equalTo('sha1')))
   }
 
-  @Test void load_parameters_leaves_git_config_intact_when_no_sha1_defined() {
+  @Test void load_parameters_leaves_git_source_reference_branch_intact_when_no_sha1_defined() {
     [
       null,
       [:],
@@ -382,12 +383,12 @@ class IntegrateNugetPackageJobTest {
       [sha1: ' '],
     ].each { params ->
       // Arrange
-      job.gitConfig.branch = 'intact'
+      job.gitSourceRef = new GitSourceReference(branch: 'intact')
       // Act
       job.loadParameters(params)
       // Assert
       assertThat("\n     For: ${ params }",
-        job.gitConfig.branch, is(equalTo('intact')))
+        job.gitSourceRef.branch, is(equalTo('intact')))
     }
   }
 
@@ -641,28 +642,28 @@ class IntegrateNugetPackageJobTest {
     )
   }
 
-  @Test void pack_returns_only_items_that_have_package() {
+  @Test void pack_returns_only_items_that_have_nugets() {
     // Arrange
     final projects = [
-      'empty package',
-      'null package',
-      'has package',
+      'empty nugets',
+      'null nugets',
+      'has nugets',
     ]
     job.source = [projects: projects]
     doReturn([
-      [project: 'empty package', package: ''],
-      [project: 'null package', package: null],
-      [project: 'has package', package: 'package'],
+      [project: 'empty nugets', nugets: []],
+      [project: 'null nugets', nugets: null],
+      [project: 'has nugets', nugets: ['package']],
     ]).when(job).packCsProjects(projects)
     // Act & Assert
-    assertThat(job.pack(), contains([project: 'has package', package: 'package']))
+    assertThat(job.pack(), contains([project: 'has nugets', nugets: ['package']]))
   }
 
   @Test void deliver_packages_checks_existence_of_each_package() {
     // Arrange
     final packages = [
-      [name: 'first', version: '1', package: 'first'],
-      [name: 'second', version: '2', package: 'second'],
+      [name: 'first', version: '1', nugets: ['first']],
+      [name: 'second', version: '2', nugets: ['second']],
     ]
     final repository = mock(NugetRepository)
     doReturn(repository).when(job).createNugetRepository()
@@ -672,5 +673,58 @@ class IntegrateNugetPackageJobTest {
     final order = inOrder(repository)
     order.verify(repository).hasNuget(name: 'first', version: '1')
     order.verify(repository).hasNuget(name: 'second', version: '2')
+  }
+
+  @Test void publishes_prerelease_version_by_default() {
+    final job = new IntegrateNugetPackageJob(pipeline)
+    assertThat(job.publishPrereleaseVersion, is(true))
+  }
+
+  @Test void does_not_prerelases_into_packet_when_asked_to_skip_them() {
+    // Arrange
+    job.publishPrereleaseVersion = false
+    final projects = [
+      'first',
+      'second',
+    ]
+    final packages = [
+      [nugets: ['first'], version: '1.2.3'],
+      [nugets: ['first'], version: '1.2.3-a'],
+      [nugets: ['second'], version: '1.0.0'],
+      [nugets: ['second'], version: '1.0.0.1'],
+    ]
+    job.source = [
+      projects: projects
+    ]
+    doReturn(packages).when(job).packCsProjects(projects)
+    // Act
+    final packet = job.pack()
+    // Assert
+    assertThat(packet, is(equalTo([
+      [nugets: ['first'], version: '1.2.3'],
+      [nugets: ['second'], version: '1.0.0'],
+    ])))
+  }
+  
+  @Test void test_publishes_test_results_from_all_trx_files_under_test_result_directory() {
+    // Arrange
+    job.testResultDir = 'test results'
+    // Act
+    job.test()
+    // Assert
+    verify(pipeline).step(argThat(
+      hasEntry('testResultsFile', 'test results/*.trx')
+    ))
+  }
+
+  @Test void run_does_not_do_checkout_when_git_source_reference_is_invalid() {
+    // Arrange
+    job.gitSourceRef = mock(GitSourceReference)
+    when(job.gitSourceRef.isValid).thenReturn(false)
+    // Act
+    job.run()
+    // Assert
+    verify(job, never()).checkout()
+    verify(job).markStageSkipped('checkout')
   }
 }

@@ -20,6 +20,7 @@ class LoadTestingJob extends PipelineJob {
   String method = 'GET'
   def headers = []
   String data = ''
+  Boolean reportOnly = false
 
   final String targetsFile = 'targets'
 
@@ -43,6 +44,8 @@ class LoadTestingJob extends PipelineJob {
           description: 'URL(s)'),
         pipeline.string(name: 'qps', defaultValue: "$qps",
           description: 'query per second to send to backends per request thread'),
+        pipeline.booleanParam(name: 'report only', defaultValue: reportOnly,
+          description: 'don\'t check required limits'),
         pipeline.string(name: 'p50Limit', defaultValue: "$p50Limit",
           description: 'required p50 minimal response time'),
         pipeline.string(name: 'p95Limit', defaultValue: "$p95Limit",
@@ -77,6 +80,7 @@ class LoadTestingJob extends PipelineJob {
   def loadParameters(def params) {
     targets = params.target?.split('\n')?.findAll{ it } ?: targets
     qps = Integer.parseInt(params.qps ?: "$qps")
+    reportOnly = params.'report only' ?: reportOnly
     p50Limit = Integer.parseInt(params.p50Limit ?: "$p50Limit")
     p95Limit = Integer.parseInt(params.p50Limit ?: "$p95Limit")
     p99Limit = Integer.parseInt(params.p50Limit ?: "$p99Limit")
@@ -129,13 +133,13 @@ class LoadTestingJob extends PipelineJob {
       final warmUpTotalRequests = totalRequests > 2000 ? 1000 : (totalRequests / 2).toInteger()
     
       runSlowCooker(qps, warmUpConcurrency, interval, warmUpTotalRequests, timeout, method)
+
       final output = runSlowCooker(qps, concurrency, interval, totalRequests, timeout, method)
 
       pipeline.echo(output)
-      final parsed = extractStats(output)
 
-      if (parsed.p50 > p50Limit || parsed.p95 > p95Limit || parsed.p99 > p99Limit) {
-        pipeline.error('Load tests result does not correspond to required response time. Please take a look into the job log.')
+      if (reportOnly == false) {
+        checkExpectations(extractStats(output))
       }
     }
   }
@@ -147,5 +151,11 @@ class LoadTestingJob extends PipelineJob {
       !it.startsWith('{')
     }
     new JsonSlurperClassic().parseText(statLines.join(''))
+  }
+
+  void checkExpectations(Map stats) {
+    if (stats.p50 > p50Limit || stats.p95 > p95Limit || stats.p99 > p99Limit) {
+      pipeline.error('Load tests result does not correspond to required response time. Please take a look into the job log.')
+    }
   }
 }

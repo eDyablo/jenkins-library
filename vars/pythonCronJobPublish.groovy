@@ -119,7 +119,7 @@ def call(
                   set +x && echo "$PIP_CONFIG" > /etc/pip.conf && set -x
 
                   echo "Configuring kubectl"
-                  curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.8.6/bin/linux/amd64/kubectl
+                  curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.15.3/bin/linux/amd64/kubectl
                   chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl && mkdir ~/.kube
                   set +x && echo "$KUBE_CONFIG" > ~/.kube/config && set -x
 
@@ -128,7 +128,6 @@ def call(
                   then
                     kubectl create namespace $AUTOMATION_NAMESPACE
                   fi
-                  apt-get update && apt-get install jq
                   kubectl get secrets -o json --namespace $JENKINS_NAMESPACE | jq --arg NAMESPACE "$AUTOMATION_NAMESPACE" '.items[].metadata.namespace = $NAMESPACE' | kubectl create -f  -
 
                   echo "Prepare configandsecrets tool"

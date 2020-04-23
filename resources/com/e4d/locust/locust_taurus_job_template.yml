@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: locust-taurus-job
+  namespace: ${NAMESPACE ?: namespace }
+  labels:
+    name: locust-taurus-job
+    role: standalone
+spec:
+  # completions: 2
+  # parallelism: 2
+  # backoffLimit: 4
+  # activeDeadlineSeconds: 180 # After reaching Job timeout - job status will become type: Failed with reason: DeadlineExceeded
+  # ttlSecondsAfterFinished: 20 # AVAILABLE IN KUBERNETES VERSION 1.12
+  template:
+    metadata:
+      name: locust
+      labels:
+        name: locust-taurus-job
+        role: standalone
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: locust-taurus-job
+          image: artifacts.k8s.us-west-2.dev.e4d.com:8082/taurus:latest
+          env:
+            - name: TARGET_HOST
+              value: ${ TARGET_HOST ?: host }
+            - name: TAURUS_CONFIG
+              value:  ${TAURUS_CONFIG ?: taurusConfig }
+            - name: ADD_OPTIONS
+              value: ${ADD_OPTIONS ?: taurusOpts ?: '-report' } # -o settings.artifacts-dir=test_artifacts
+# Locust framework Test Listeners parameters
+#            - name: MAX_LATENCY
+#              value: "9000"
+#            - name: LOAD_TEST_TIMEOUT # test timeout in seconds for timeout_listener
+#              value: "120"
+#            - name: MAX_REQUESTS # set max number requests to be generated - the same as Taurus "iterations"
+#              value: 10000
+# Enable master FIXED_RPS listeners with variables
+#            - name: TARGET_RPS
+#              value: "15"
+#            - name: SLAVE_COUNT
+#              value: "4"
+            - name: ADD_COMMAND
+              value: ${ADD_COMMAND ?: 'ls -la && echo start sleeping for 10 sec. && sleep 10 && echo Stopping Container.' }
+          ports:
+            - containerPort: 8089
+          volumeMounts:
+            - name: load-test
+              mountPath: /bzt-configs/load_test
+              readOnly: true
+            - name: configs
+              mountPath: /bzt-configs/load_test/configs
+              readOnly: true
+      imagePullSecrets:
+        - name: regsecret
+      volumes:
+        - name: load-test
+          configMap:
+            name: load-test
+        - name: configs
+          configMap:
+            name: configs
