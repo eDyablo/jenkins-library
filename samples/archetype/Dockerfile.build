@@ -1,0 +1,25 @@
+FROM mcr.microsoft.com/dotnet/core/sdk:2.2
+
+ARG nuget_conf_file=nuget.conf
+ARG build_config=Debug
+ARG build_path=/build
+
+WORKDIR /app
+
+COPY src src
+
+COPY ${nuget_conf_file} /root/.nuget/NuGet/NuGet.Config
+
+RUN dotnet publish src/main --configuration ${build_config} --output ${build_path}/app/main
+
+RUN dotnet publish src/api --configuration ${build_config} --output ${build_path}/app/api
+
+RUN dotnet publish src/job --configuration ${build_config} --output ${build_path}/app/job
+
+RUN dotnet build src/main.test --configuration ${build_config}
+
+RUN dotnet build src/api.test --configuration ${build_config}
+
+RUN dotnet build src/archetype.lib --configuration ${build_config}
+
+RUN rm -f /root/.nuget/NuGet/NuGet.Config

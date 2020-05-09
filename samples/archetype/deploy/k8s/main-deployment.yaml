@@ -1,0 +1,34 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ${ service.name }-main
+spec:
+  selector:
+    matchLabels:
+      app: ${ service.name }-main
+  template:
+    metadata:
+      labels:
+        app: ${ service.name }-main
+    spec:
+      imagePullSecrets:
+        - name: regsecret
+      volumes:
+        - name: ${ service.name }-config-volume
+          configMap:
+            name: ${ service.name }-main-config
+      containers:
+      - name: main
+        image: ${ service.image }
+        command: ["dotnet", "main/main.dll"]
+        resources:
+          limits:
+            memory: "50Mi"
+            cpu: "0.05"
+        ports:
+          - name: http
+            containerPort: 80
+        volumeMounts:
+          - name: ${ service.name }-config-volume
+            mountPath: "/etc/earnin"
+            readOnly: true

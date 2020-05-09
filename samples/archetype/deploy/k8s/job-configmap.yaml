@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${ service.name }-job-config
+data:
+  config.json: |
+    <%= file.read("config/job/default/config.json") %>

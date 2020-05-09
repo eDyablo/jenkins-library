@@ -1,0 +1,35 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: ${ service.name }-job
+spec:
+  schedule: "0 * * * *"
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: ${ service.name }
+        spec:
+          imagePullSecrets:
+          - name: regsecret
+          restartPolicy: Never
+          volumes:
+          - name: ${ service.name }-config-volume
+            configMap:
+              name: ${ service.name }-job-config
+          containers:
+          - name: main
+            image: ${ service.image }
+            command: ["dotnet", "job/job.dll"]
+            resources:
+              limits:
+                cpu: "0.05"
+                memory: "20Mi"
+            volumeMounts:
+            - name: ${ service.name }-config-volume
+              mountPath: "/etc/earnin"
+              readOnly: true
