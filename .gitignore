@@ -1,8 +1,9 @@
-﻿/.vs*
-.idea
+﻿.classpath
 .gradle
-/build
-/bin
-.settings
+.idea
 .project
-.classpath
+.settings
+/.vs*
+bin/
+build/
+obj/
